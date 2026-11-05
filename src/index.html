@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>C++ 코드섬: 로봇 복구대 — 1장 시작 기지</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <noscript><p class="noscript">이 게임은 자바스크립트로 동작합니다. 미리보기 화면이라면 파일을 내려받아 브라우저(Chrome, Edge, Safari, Firefox)에서 직접 여세요.</p></noscript>
+  <a class="skip" href="#workbench">코드 작업대로 건너뛰기</a>
+  <header class="topbar">
+    <div class="brand"><img id="logo" class="px-text" alt="CODE ISLAND" height="15"><span class="brand-ko">C++ 코드섬 <small>로봇 복구대</small></span></div>
+    <div id="chapterHud" class="chapter-hud"></div>
+    <nav id="missionTabs" class="tabs" aria-label="미션 선택"></nav>
+    <div id="tools" class="tools">
+      <button class="btn tool-btn" data-drawer="hints" aria-pressed="false"></button>
+      <button class="btn tool-btn" data-drawer="tools" aria-pressed="false"></button>
+      <button class="btn tool-btn" data-drawer="lecture" aria-pressed="false"></button>
+      <button class="btn tool-btn" data-action="open-map"></button>
+      <button class="btn tool-btn" data-action="open-record"></button>
+      <button class="btn tool-btn" data-action="toggle-sound" aria-pressed="false"></button>
+      <button class="btn tool-btn" data-action="toggle-motion" aria-pressed="false"></button>
+      <span id="saveState" role="status"></span>
+    </div>
+  </header>
+  <section id="goalbar" class="goalbar px-panel" aria-label="현재 목표"></section>
+  <nav id="paneTabs" class="pane-tabs" role="tablist" aria-label="화면 전환"></nav>
+  <main id="layout" class="layout" data-pane="code">
+    <section id="pane-scene" class="pane pane-scene" data-pane="scene" aria-label="게임 장면">
+      <div class="px-panel scene-panel">
+        <h2 id="sceneTitle" class="panel-title"></h2>
+        <div id="sceneStage" class="scene-stage"></div>
+        <p id="sceneCaption" class="scene-caption" aria-live="polite"></p>
+        <div id="inventory" class="inventory"></div>
+      </div>
+    </section>
+    <section id="pane-code" class="pane pane-code" data-pane="code" aria-label="코드 작업대">
+      <div id="workbench" class="px-panel workbench" tabindex="-1"></div>
+    </section>
+    <section id="pane-result" class="pane pane-result" data-pane="result" aria-label="실행 결과">
+      <div id="resultPane" class="result-pane"></div>
+    </section>
+  </main>
+  <div id="controls" class="controls" aria-label="실행 조작"></div>
+  <aside id="drawer" class="drawer px-window" aria-label="도움말" hidden></aside>
+  <dialog id="mapDialog" class="px-window"><button class="btn small ghost close" data-action="close-dialog" aria-label="닫기">✕</button><div class="dlg-body"></div></dialog>
+  <dialog id="recordDialog" class="px-window"><button class="btn small ghost close" data-action="close-dialog" aria-label="닫기">✕</button><div class="dlg-body"></div></dialog>
+  <script src="cppsim.js"></script>
+  <script src="missions.js"></script>
+  <script src="pixel.js"></script>
+  <script src="sfx.js"></script>
+  <script src="scene.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
