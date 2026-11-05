@@ -7,12 +7,14 @@
   const Px = window.Pixel;
   const Scene = window.Scene;
   const Sfx = window.Sfx;
-  const { MISSIONS, CHAPTERS, ERROR_TYPES, ERROR_LABEL } = M;
+  const I18N = window.I18N;
+  const tr = (key, params) => I18N.t(key, params);
+  let MISSIONS, CHAPTERS, ERROR_TYPES, ERROR_LABEL;
 
   const PROGRESS_KEY = 'cpp-code-island/progress/v1';
   const WORK_KEY = 'cpp-code-island/work/v1';
   const SETTINGS_KEY = 'cpp-code-island/settings/v1';
-  const HINT_STEPS = ['관찰할 곳', '필요한 개념', '일부 코드', '해설'];
+  let HINT_STEPS;
   const $ = (sel) => document.querySelector(sel);
 
   // ------------------------------------------------------------ storage
@@ -39,6 +41,23 @@
   // ------------------------------------------------------------ settings
 
   const settings = Object.assign({ sound: false, motion: 'auto' }, readStore(SETTINGS_KEY) || {});
+  const requestedLang = new URLSearchParams(window.location.search).get('lang');
+  const initialLang = ['ko', 'en'].includes(requestedLang) ? requestedLang
+    : ['ko', 'en'].includes(settings.lang) ? settings.lang
+      : /^ko/i.test(navigator.language || '') ? 'ko' : 'en';
+  function loadLanguage(lang) {
+    I18N.setLang(lang);
+    Sim.setLang(lang);
+    M.setLang(lang);
+    MISSIONS = M.getMissions(lang);
+    CHAPTERS = M.getChapters(lang);
+    ERROR_TYPES = M.getErrorTypes(lang);
+    ERROR_LABEL = M.getErrorLabels(lang);
+    HINT_STEPS = ['hint.observe', 'hint.concept', 'hint.code', 'hint.explanation'].map((key) => tr(key));
+    document.documentElement.lang = lang;
+    document.title = tr('page.title');
+  }
+  loadLanguage(initialLang);
   const motionQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
   const reduceMotion = () => settings.motion === 'reduce' || (settings.motion === 'auto' && !!motionQuery && motionQuery.matches);
   function applySettings() {
@@ -62,7 +81,7 @@
 
   function normalizeProgress(data) {
     if (!data || data.version !== 1 || typeof data.missions !== 'object' || data.missions === null) {
-      throw new Error('C++ 코드섬 진도 파일(version 1)이 아닙니다.');
+      throw new Error((tr("ui.thisIsNotACCode")));
     }
     const out = emptyProgress();
     for (const m of MISSIONS) {
@@ -240,8 +259,8 @@
       else if (m[5]) cls = 'c-num';
       else if (KEYWORDS.has(t)) cls = 'c-kw';
       else if (LIBNAMES.has(t)) cls = 'c-lib';
-      if (m[6] && marks && marks.change.includes(t)) out += `<mark class="tok-change" title="이 줄에서 값이 바뀜">${esc(t)}</mark>`;
-      else if (m[6] && marks && marks.read.includes(t)) out += `<mark class="tok-read" title="이 줄에서 값을 읽기만 함">${esc(t)}</mark>`;
+      if (m[6] && marks && marks.change.includes(t)) out += `<mark class="tok-change" title="${tr("ui.valueChangedOnThisLine")}">${esc(t)}</mark>`;
+      else if (m[6] && marks && marks.read.includes(t)) out += `<mark class="tok-read" title="${tr("ui.valueOnlyReadOnThisLine")}">${esc(t)}</mark>`;
       else out += cls ? `<span class="${cls}">${esc(t)}</span>` : esc(t);
       last = m.index + t.length;
     }
@@ -250,11 +269,11 @@
 
   function codeView(lines, opts) {
     const o = opts || {};
-    return `<ol class="code" aria-label="코드">${lines.map((line, i) => {
+    return `<ol class="code" aria-label="${tr("ui.code")}">${lines.map((line, i) => {
       const no = i + 1;
       const active = no === o.activeLine;
       const error = no === o.errorLine;
-      const mk = error ? `${icon('cross', 'r')}<span class="sr">오류 줄</span>` : active ? `${icon('arrow', 'y')}<span class="sr">현재 실행 줄</span>` : '';
+      const mk = error ? `${icon('cross', 'r')}<span class="sr">${tr("ui.errorLine")}</span>` : active ? `${icon('arrow', 'y')}<span class="sr">${tr("ui.currentExecutionLine")}</span>` : '';
       return `<li class="${active ? 'active' : ''} ${error ? 'error' : ''}" data-line="${no}"><span class="gut"><span class="mk">${mk}</span><span class="ln">${no}</span></span><code>${renderLine(line, o, active ? o.marks : null)}</code></li>`;
     }).join('')}</ol>`;
   }
@@ -268,11 +287,11 @@
       if (o.blanks[part]) {
         const idx = o.choices[part];
         const opt = idx === undefined ? null : o.blanks[part][idx];
-        const shown = opt ? (opt.code === '' ? '‹비움›' : opt.code) : '▢';
+        const shown = opt ? (opt.code === '' ? (tr("ui.empty")) : opt.code) : '▢';
         const n = Object.keys(o.blanks).indexOf(part) + 1;
-        html += `<button class="blank ${opt ? 'filled' : 'empty'} ${o.activeBlank === part ? 'active' : ''}" data-blank="${part}" aria-pressed="${o.activeBlank === part}" aria-label="빈칸 ${n}: ${opt ? esc(shown) : '비어 있음'}${o.activeBlank === part ? ' (선택됨)' : ''}">${esc(shown)}</button>`;
+        html += `<button class="blank ${opt ? 'filled' : 'empty'} ${o.activeBlank === part ? 'active' : ''}" data-blank="${part}" aria-pressed="${o.activeBlank === part}" aria-label="${tr("ui.blank")} ${n}: ${opt ? esc(shown) : (tr("ui.empty2"))}${o.activeBlank === part ? (tr("ui.selected")) : ''}">${esc(shown)}</button>`;
       } else if (o.params && part in o.params) {
-        html += `<span class="param" title="검사 입력값">${esc(o.params[part])}</span>`;
+        html += `<span class="param" title="${tr("ui.testInputValue")}">${esc(o.params[part])}</span>`;
       } else {
         html += esc(`{${part}}`);
       }
@@ -303,7 +322,7 @@
   function currentTest(m, w) {
     if (m.kind === 'editor') {
       const fixed = m.tests.find((t) => t.input === w.input.trim());
-      return fixed || { input: w.input, label: `입력 ${w.input.trim() || '(없음)'}` };
+      return fixed || { input: w.input, label: `${tr("ui.input")} ${w.input.trim() || (tr("ui.none"))}` };
     }
     const v = currentVariant(m, w);
     return v.tests ? v.tests[w.testIndex] : null;
@@ -413,7 +432,7 @@
       if (!M.blanksFilled(v, w.choices[v.id])) {
         const firstEmpty = Object.keys(v.blanks).find((k) => w.choices[v.id][k] === undefined);
         w.activeBlank = firstEmpty;
-        w.feedback = { tone: 'info', title: '빈칸이 남아 있습니다', message: '▢ 칸을 모두 채운 뒤 실행하세요. 비어 있는 첫 칸을 선택해 두었습니다.', fix: { type: 'blank', key: firstEmpty } };
+        w.feedback = { tone: 'info', title: (tr("ui.someBlanksAreEmpty")), message: (tr("ui.fillInEveryBeforeRunningThe")), fix: { type: 'blank', key: firstEmpty } };
         render();
         return;
       }
@@ -492,24 +511,24 @@
     const details = [];
     if (m.id === '1-4' && w.predict.submitted) {
       const guess = w.predict.answers[0];
-      details.push(`처음 예상한 잔량: ${guess === '' || guess === undefined ? '(빈칸)' : guess} · 입력 100 의 실제 잔량: 65`);
+      details.push(`${tr("ui.initialRemainingAmountPrediction")}${guess === '' || guess === undefined ? (tr("ui.blank2")) : guess}${tr("ui.actualRemainingAmountWithInput100")}`);
     }
     let next;
     if (m.id === '1-2') {
-      next = w.variant === 'base' ? '응용 신호 GO 를 보내 보세요. 작업대 위의 "응용: GO" 탭이 열렸습니다.' : '두 신호 모두 보냈습니다. 다음 미션으로 이동하세요.';
+      next = w.variant === 'base' ? (tr("ui.trySendingTheGOApplicationSignal")) : (tr("ui.bothSignalsSentMoveOnTo"));
     } else if (r.applied) {
-      next = '이 미션은 적용 확인까지 끝났습니다.';
+      next = (tr("ui.youHaveCompletedThisMissionAnd"));
     } else {
-      next = '"다른 입력으로 검사"로 값이 달라져도 맞는지 확인하세요.';
+      next = (tr("ui.useTestWithOtherInputsTo"));
     }
     w.feedback = {
       tone: 'success',
-      title: firstDone ? `미션 완료 · ${m.reward.name} 획득` : '성공',
+      title: firstDone ? `${tr("ui.missionComplete")}${m.reward.name}${tr("ui.acquired")}` : (tr("ui.success")),
       message: verdict.message,
       details,
       reuse: m.reuse,
       next,
-      action: m.id === '1-2' && w.variant === 'base' ? { label: '응용: GO 로 가기', variant: 'apply' } : (!r.applied && m.id !== '1-2' ? { label: '다른 입력으로 검사', apply: true } : null),
+      action: m.id === '1-2' && w.variant === 'base' ? { label: (tr("ui.goToApplicationGO")), variant: 'apply' } : (!r.applied && m.id !== '1-2' ? { label: (tr("ui.testWithOtherInputs")), apply: true } : null),
       reflect: r.status === 'done',
     };
     noteResult();
@@ -525,8 +544,9 @@
       if (verdict.kind === 'logic' && byWhy) return { type: 'blank', key: byWhy };
       if (verdict.line) {
         const lineText = v.template.split('\n')[verdict.line - 1] || '';
-        const onLine = keys.find((k) => lineText.includes(`{${k}}`));
-        if (onLine) return { type: 'blank', key: onLine };
+        // 문장 끝 ; 오류는 그 줄의 마지막 빈칸, 나머지는 첫 빈칸이 원인일 가능성이 크다
+        const onLine = keys.filter((k) => lineText.includes(`{${k}}`));
+        if (onLine.length) return { type: 'blank', key: verdict.errorType === 'semicolon' ? onLine[onLine.length - 1] : onLine[0] };
       }
       return { type: 'blank', key: byWhy || keys[0] };
     }
@@ -543,14 +563,14 @@
     const fix = fixTarget(m, w, verdict);
     if (verdict.kind !== 'logic') {
       recordError(m, verdict.errorType);
-      const label = ERROR_LABEL[verdict.kind] || '오류';
+      const label = ERROR_LABEL[verdict.kind] || (tr("ui.error"));
       const next = verdict.kind === 'unsupported'
-        ? '이 시뮬레이터가 지원하는 1장 문법으로 바꿔 쓰세요.'
+        ? (tr("ui.rewriteUsingTheChapter1Syntax"))
         : verdict.kind === 'compile' || verdict.kind === 'link'
-          ? `${verdict.line}번 줄을 고친 뒤 다시 실행하세요. 실행 파일이 없으면 장면은 움직이지 않습니다.`
-          : '오류가 난 줄과 그때의 변수 값을 확인하세요.';
+          ? tr('format.fixLine', { line: verdict.line })
+          : (tr("ui.checkTheLineWithTheError"));
       const note = verdict.kind === 'ub' || verdict.kind === 'runtime'
-        ? '학습 검사기가 여기서 멈춘 것은 교육용 진단입니다. 실제 C++ 프로그램이 항상 같은 방식으로 멈추지는 않습니다.'
+        ? (tr("ui.theLearningCheckerStopsHereFor"))
         : null;
       return { tone: 'error', title: label, message: verdict.message, details: note ? [note] : [], next, fix };
     }
@@ -570,10 +590,10 @@
     }
     return {
       tone: 'warn',
-      title: '실행은 됐지만 목표와 다릅니다',
+      title: (tr("ui.theProgramRanButDidNot")),
       message: verdict.message,
       details,
-      next: m.id === '1-3' ? '장면의 배터리와 변수 표에서 share 의 타입과 값을 보고, 표시된 빈칸을 다시 고르세요.' : '출력 칸과 변수 표를 목표와 비교해 고칠 줄을 찾으세요.',
+      next: m.id === '1-3' ? (tr("ui.checkTheBatteryInTheScene")) : (tr("ui.compareTheOutputAndVariableTable")),
       fix,
     };
   }
@@ -584,7 +604,7 @@
     stopPlay();
     const tests = m.kind === 'editor' ? m.tests : currentVariant(m, w).tests;
     if (m.kind === 'blanks' && !M.blanksFilled(currentVariant(m, w), w.choices[w.variant])) {
-      w.feedback = { tone: 'info', title: '빈칸이 남아 있습니다', message: '빈칸을 모두 채운 뒤 검사하세요.' };
+      w.feedback = { tone: 'info', title: (tr("ui.someBlanksAreEmpty")), message: (tr("ui.fillInEveryBlankBeforeChecking")) };
       render();
       return;
     }
@@ -603,8 +623,8 @@
       w.successKey = Date.now();
       Sfx.play('success');
       w.feedback = {
-        tone: 'success', title: '적용 확인', message: `검사 입력 ${report.length}개 모두에서 목표를 달성했습니다.`,
-        reuse: m.reuse, next: nextMission(m) ? '다음 미션으로 이동하세요.' : '1장 미션을 모두 마쳤습니다.', reflect: true,
+        tone: 'success', title: (tr("ui.applicationCheck")), message: tr('format.applySuccess', { count: report.length }),
+        reuse: m.reuse, next: nextMission(m) ? (tr("ui.moveOnToTheNextMission")) : (tr("ui.youHaveCompletedAllChapter1")), reflect: true,
       };
     } else {
       const details = [];
@@ -618,7 +638,7 @@
         }
       } else if (baseOk && M.diagnoseApply(failures.map((f) => f.verdict)) === 'hardcode') {
         hardcode = true;
-        details.push('입력이 달라져도 같은 숫자가 출력됩니다. 결과를 숫자로 직접 적지 말고, 계산한 변수를 출력하세요.');
+        details.push((tr("ui.theSameNumberIsPrintedFor")));
         recordError(m, 'hardcode');
       } else {
         for (const f of failures) if (f.verdict.errorType) recordError(m, f.verdict.errorType);
@@ -626,10 +646,10 @@
       Sfx.play('error');
       w.feedback = {
         tone: 'warn',
-        title: baseOk ? '처음 입력에서만 맞습니다' : '목표와 다른 입력이 있습니다',
-        message: `${report.length}개 중 ${report.length - failures.length}개 통과. ${hardcode ? '값이 바뀌어도 같은 규칙으로 계산되는지 확인하세요.' : '아래 표에서 틀린 입력을 골라 한 단계씩 실행해 보세요.'}`,
+        title: baseOk ? (tr("ui.onlyTheInitialInputIsCorrect")) : (tr("ui.someInputsDoNotMeetThe")),
+        message: `${tr('format.passed', { total: report.length, passed: report.length - failures.length })}${hardcode ? (tr("ui.checkThatTheSameRuleIs")) : (tr("ui.chooseAFailingInputInThe"))}`,
         details,
-        next: '표의 "이 입력으로 실행"을 누르면 장면에서 어느 단계부터 값이 달라지는지 볼 수 있습니다.',
+        next: (tr("ui.selectRunWithThisInputIn")),
         fix: fixTarget(m, w, { kind: 'logic' }),
       };
     }
@@ -654,7 +674,7 @@
     const w = W();
     const answers = m.predict.questions.map((q, i) => (w.predict.answers[i] === undefined ? '' : String(w.predict.answers[i]).trim()));
     if (answers.some((a) => a === '')) {
-      w.feedback = { tone: 'info', title: '예상을 먼저 골라 주세요', message: '정답이 아니어도 괜찮습니다. 실행 전에 예상해 두면 결과와 비교할 수 있습니다.' };
+      w.feedback = { tone: 'info', title: (tr("ui.chooseAPredictionFirst")), message: (tr("ui.itSOKIfYouRe")) };
       render();
       return;
     }
@@ -671,7 +691,7 @@
         if (!correct) recordError(m, 'intDivision');
       });
       w.run = { kind: 'snippet', key: ++runCounter, source: m.predict.program, result, test: null, stepIndex: 0, graded: true, pass: false };
-      w.feedback = { tone: 'info', title: '예상을 기록했습니다', message: '실행 또는 한 단계로 마지막 줄까지 진행하면 출력 화면의 실제 결과와 내 예상을 나란히 보여 줍니다.' };
+      w.feedback = { tone: 'info', title: (tr("ui.predictionRecorded")), message: (tr("ui.runOrStepThroughToThe")) };
       sfxForStep(w);
     } else {
       const actual = m.predict.answersFrom();
@@ -680,7 +700,7 @@
         rec(m).predictions.push({ q: q.label, answer: answers[i], actual: actual[i], correct: Number(answers[i]) === Number(actual[i]) });
       });
       w.phase = 'task';
-      w.feedback = { tone: 'info', title: '예상을 기록했습니다', message: '이제 코드를 고쳐 실행해 보세요. 성공하면 예상과 비교해 보여 줍니다.' };
+      w.feedback = { tone: 'info', title: (tr("ui.predictionRecorded")), message: (tr("ui.nowFixTheCodeAndRun")) };
     }
     saveProgress();
     saveWork();
@@ -732,15 +752,15 @@
       w.successKey = Date.now();
       Sfx.play('success');
       w.feedback = {
-        tone: 'success', title: first ? `미션 완료 · ${m.reward.name} 획득` : '성공', message: result.message,
-        reuse: m.reuse, next: '작업대 아래 상황 질문 2개로 적용을 확인하세요.', reflect: true,
+        tone: 'success', title: first ? `${tr("ui.missionComplete")}${m.reward.name}${tr("ui.acquired")}` : (tr("ui.success")), message: result.message,
+        reuse: m.reuse, next: (tr("ui.checkYourUnderstandingWithTheTwo")), reflect: true,
       };
     } else if (full) {
       recordError(m, 'order');
       Sfx.play('error');
-      w.feedback = { tone: 'warn', title: '흐름이 끊긴 곳이 있습니다', message: result.message, next: '표시된 칸의 카드를 빼고 알맞은 카드를 놓으세요.', fix: { type: 'slot', index: result.wrongIndex } };
+      w.feedback = { tone: 'warn', title: (tr("ui.theSequenceIsBroken")), message: result.message, next: (tr("ui.removeTheCardFromTheMarked")), fix: { type: 'slot', index: result.wrongIndex } };
     } else {
-      w.feedback = { tone: 'info', title: '아직 다 놓지 않았습니다', message: result.message };
+      w.feedback = { tone: 'info', title: (tr("ui.notAllCardsHaveBeenPlaced")), message: result.message };
     }
     noteResult();
     saveProgress();
@@ -760,8 +780,8 @@
       w.successKey = Date.now();
       Sfx.play('success');
       w.feedback = {
-        tone: 'success', title: '적용 확인', message: '빌드 과정을 실제 상황에 적용했습니다.',
-        reuse: m.reuse, next: '다음 미션에서 직접 코드를 실행해 봅니다.', reflect: true,
+        tone: 'success', title: (tr("ui.applicationCheck")), message: (tr("ui.youAppliedTheBuildProcessTo")),
+        reuse: m.reuse, next: (tr("ui.inTheNextMissionYouWill")), reflect: true,
       };
       noteResult();
     }
@@ -826,7 +846,22 @@
 
   // ------------------------------------------------------------ rendering
 
+  function renderStatic() {
+    document.documentElement.lang = I18N.lang;
+    document.title = tr('page.title');
+    $('.skip').textContent = tr('page.skip');
+    $('.brand-ko').innerHTML = `${esc(tr('page.brand'))} <small>${esc(tr('page.subtitle'))}</small>`;
+    const labels = {
+      '#missionTabs': 'page.missions', '#goalbar': 'page.goal', '#paneTabs': 'page.panes',
+      '#pane-scene': 'page.scene', '#pane-code': 'page.workbench', '#pane-result': 'page.result',
+      '#controls': 'page.controls', '#drawer': 'page.help',
+    };
+    for (const [selector, key] of Object.entries(labels)) $(selector).setAttribute('aria-label', tr(key));
+    document.querySelectorAll('dialog .close').forEach((button) => button.setAttribute('aria-label', tr('page.close')));
+  }
+
   function render() {
+    renderStatic();
     renderTopbar();
     renderGoal();
     renderScene();
@@ -839,10 +874,10 @@
   }
 
   function statusIcon(r) {
-    if (r.applied && r.status === 'done') return `${icon('star', 'y')}<span class="sr">적용 확인</span>`;
-    if (r.status === 'done') return `${icon('dot', 'G')}<span class="sr">미션 완료</span>`;
-    if (r.status === 'trying') return `${icon('half', 'o')}<span class="sr">시도 중</span>`;
-    return `${icon('ring', 'l')}<span class="sr">미시도</span>`;
+    if (r.applied && r.status === 'done') return `${icon('star', 'y')}<span class="sr">${tr("ui.applicationCheck")}</span>`;
+    if (r.status === 'done') return `${icon('dot', 'G')}<span class="sr">${tr("ui.missionComplete2")}</span>`;
+    if (r.status === 'trying') return `${icon('half', 'o')}<span class="sr">${tr("ui.inProgress")}</span>`;
+    return `${icon('ring', 'l')}<span class="sr">${tr("ui.notAttempted")}</span>`;
   }
 
   function renderTopbar() {
@@ -852,28 +887,29 @@
       </button>`).join('');
     const done = MISSIONS.filter((m) => rec(m).status === 'done').length;
     $('#chapterHud').innerHTML = `
-      <span class="hud-label">1장 시작 기지</span>
-      <span class="hud-bar" role="img" aria-label="미션 ${done}/${MISSIONS.length} 완료">${MISSIONS.map((m) => `<span class="seg ${rec(m).status === 'done' ? 'on' : ''} ${rec(m).applied ? 'star' : ''}"></span>`).join('')}</span>
+      <span class="hud-label">${tr("ui.chapter1StartingBase")}</span>
+      <span class="hud-bar" role="img" aria-label="${tr("ui.missions")}${done}/${MISSIONS.length}${tr("ui.complete")}">${MISSIONS.map((m) => `<span class="seg ${rec(m).status === 'done' ? 'on' : ''} ${rec(m).applied ? 'star' : ''}"></span>`).join('')}</span>
       <span class="hud-num">${done}/${MISSIONS.length}</span>`;
     renderTools();
   }
 
   function renderTools() {
     const t = $('#tools');
-    const labels = { hints: ['hint', '힌트'], tools: ['card', '개념'], lecture: ['book', '강의'] };
+    const labels = { hints: ['hint', (tr("ui.hints"))], tools: ['card', (tr("ui.concepts"))], lecture: ['book', (tr("ui.lecture"))] };
     t.querySelectorAll('[data-drawer]').forEach((b) => {
       const [ic, label] = labels[b.dataset.drawer];
       b.innerHTML = `${icon(ic, 'w')}<span>${label}</span>`;
       b.setAttribute('aria-pressed', String(ui.drawer === b.dataset.drawer));
     });
-    t.querySelector('[data-action="open-map"]').innerHTML = `${icon('map', 'w')}<span>지도</span>`;
-    t.querySelector('[data-action="open-record"]').innerHTML = `${icon('record', 'w')}<span>기록</span>`;
+    t.querySelector('[data-action="open-map"]').innerHTML = `${icon('map', 'w')}<span>${tr("ui.map")}</span>`;
+    t.querySelector('[data-action="open-record"]').innerHTML = `${icon('record', 'w')}<span>${tr("ui.record")}</span>`;
     const s = t.querySelector('[data-action="toggle-sound"]');
-    s.innerHTML = `${icon(settings.sound ? 'soundOn' : 'soundOff', 'w')}<span>소리 ${settings.sound ? '켬' : '끔'}</span>`;
+    s.innerHTML = `${icon(settings.sound ? 'soundOn' : 'soundOff', 'w')}<span>${tr("ui.sound")}${settings.sound ? (tr("ui.on")) : (tr("ui.off"))}</span>`;
     s.setAttribute('aria-pressed', String(settings.sound));
     const mo = t.querySelector('[data-action="toggle-motion"]');
-    mo.innerHTML = `${icon('motion', 'w')}<span>움직임 ${reduceMotion() ? '줄임' : '보통'}</span>`;
+    mo.innerHTML = `${icon('motion', 'w')}<span>${tr("ui.motion")}${reduceMotion() ? (tr("ui.reduced")) : (tr("ui.normal"))}</span>`;
     mo.setAttribute('aria-pressed', String(reduceMotion()));
+    t.querySelector('[data-action="toggle-language"]').innerHTML = `${icon('book', 'w')}<span>${I18N.lang === 'ko' ? 'English' : '한국어'}</span>`;
   }
 
   function renderGoal() {
@@ -885,14 +921,14 @@
       <div class="goal-main">
         <h1 class="goal-title">${esc(m.title)} <small>${esc(m.zone)}</small></h1>
         <p class="goal-text">${esc(m.goal)}</p>
-        <details class="goal-done" ${narrow() ? '' : 'open'}><summary>완료 조건</summary><p>${esc(m.done)}</p></details>
+        <details class="goal-done" ${narrow() ? '' : 'open'}><summary>${tr("ui.completionCriteria")}</summary><p>${esc(m.done)}</p></details>
       </div>
       <div class="goal-badges">
-        <span class="badge ${r.status === 'done' ? 'ok' : ''}">${icon(r.status === 'done' ? 'check' : 'ring', r.status === 'done' ? 'e' : 'g')} 미션 완료${r.status === 'done' ? '' : ' 전'}</span>
-        <span class="badge ${r.applied ? 'ok' : ''}">${icon(r.applied ? 'star' : 'ring', r.applied ? 'o' : 'g')} 적용 확인${r.applied ? '' : ' 전'}</span>
-        <button class="btn small ghost" data-action="restart" title="진도 기록은 그대로 두고 이 미션의 작업만 처음 상태로 돌립니다">${icon('reset')}<span>미션 다시 시작</span></button>
+        <span class="badge ${r.status === 'done' ? 'ok' : ''}">${icon(r.status === 'done' ? 'check' : 'ring', r.status === 'done' ? 'e' : 'g')} ${tr("ui.missionComplete2")}${r.status === 'done' ? '' : (tr("ui.pending"))}</span>
+        <span class="badge ${r.applied ? 'ok' : ''}">${icon(r.applied ? 'star' : 'ring', r.applied ? 'o' : 'g')} ${tr("ui.applicationCheck")}${r.applied ? '' : (tr("ui.pending"))}</span>
+        <button class="btn small ghost" data-action="restart" title="${tr("ui.resetThisMissionSWorkWithout")}">${icon('reset')}<span>${tr("ui.restartMission")}</span></button>
       </div>
-      ${allDone ? `<div class="chapter-clear">${itemImg('house', 3)}<span><b>1장 시작 기지 복구 완료!</b> 적용 확인 ${MISSIONS.filter((x) => rec(x).applied).length}/${MISSIONS.length} · 2장 자동문과 운송로는 제작 예정입니다.</span></div>` : ''}`;
+      ${allDone ? `<div class="chapter-clear">${itemImg('house', 3)}<span><b>${tr("ui.chapter1StartingBaseRestored")}</b> ${tr("ui.applicationCheck")} ${MISSIONS.filter((x) => rec(x).applied).length}/${MISSIONS.length}${tr("ui.chapter2SAutomaticDoorsAnd")}</span></div>` : ''}`;
   }
 
   function renderScene() {
@@ -901,10 +937,10 @@
     $('#sceneTitle').innerHTML = `${itemImg(m.reward.item, 2)}<span>${esc(m.zone)}</span>`;
     Scene.set(sceneModel(m, w));
     $('#sceneCaption').innerHTML = sceneCaption(m, w);
-    $('#inventory').innerHTML = `<p class="inv-title">획득한 도구 <small>눌러서 개념 보기</small></p><div class="inv-slots">${MISSIONS.map((x) => {
+    $('#inventory').innerHTML = `<p class="inv-title">${tr("ui.toolsAcquired")} <small>${tr("ui.selectToViewConcepts")}</small></p><div class="inv-slots">${MISSIONS.map((x) => {
       const got = rec(x).status === 'done';
-      return `<button class="inv-slot ${got ? 'got' : 'locked'}" data-inventory="${x.id}" aria-label="${esc(x.reward.name)}: ${got ? '획득함, 개념 보기' : '아직 잠김'}">
-        ${got ? itemImg(x.reward.item, 3) : icon('lock', 'g', 3)}<span>${got ? esc(x.reward.name) : `${x.id} 잠김`}</span></button>`;
+      return `<button class="inv-slot ${got ? 'got' : 'locked'}" data-inventory="${x.id}" aria-label="${esc(x.reward.name)}: ${got ? (tr("ui.acquiredViewConcept")) : (tr("ui.stillLocked"))}">
+        ${got ? itemImg(x.reward.item, 3) : icon('lock', 'g', 3)}<span>${got ? esc(x.reward.name) : `${x.id}${tr("ui.locked")}`}</span></button>`;
     }).join('')}</div>`;
   }
 
@@ -913,23 +949,23 @@
     if (m.kind === 'order') {
       const c = w.lastCheck;
       if (!c) return esc(m.sceneIdle);
-      return c.pass ? '로봇이 모든 기계를 순서대로 지나 기지를 켰습니다.' : `로봇이 ${c.prefix + 1}번째 기계에서 멈췄습니다. 그 칸의 카드가 흐름에 맞지 않습니다.`;
+      return c.pass ? (tr("ui.theRobotPassedThroughEveryMachine")) : `${tr("ui.theRobotStoppedAtMachine")}${c.prefix + 1}${tr("ui.theCardInThatSlotDoes")}`;
     }
-    if (!run) return esc(rec(m).status === 'done' ? `${m.zone} 복구됨. 다시 실행해 보거나 다음 미션으로 이동하세요.` : m.sceneIdle);
-    if (run.stepIndex < 0) return `<b class="cap-err">${run.result.stage === 'link' ? '링크' : '컴파일'} 실패</b> 실행 파일이 만들어지지 않아 장면의 어떤 상태도 바뀌지 않았습니다.`;
+    if (!run) return esc(rec(m).status === 'done' ? `${m.zone}${tr("ui.restoredRunAgainOrMoveOn")}` : m.sceneIdle);
+    if (run.stepIndex < 0) return `<b class="cap-err">${run.result.stage === 'link' ? (tr("ui.link")) : (tr("ui.compile"))}${tr("ui.failed")}</b> ${tr("ui.noExecutableWasCreatedSoNothing")}`;
     const st = stepState(w);
-    const parts = [`<b>${st.line}번 줄</b>`];
-    if (st.error) parts.push(`<span class="cap-err">여기서 멈춤</span>`);
+    const parts = [`<b>${tr('format.line', { line: st.line })}</b>`];
+    if (st.error) parts.push(`<span class="cap-err">${tr("ui.stoppedHere")}</span>`);
     for (const name of st.changed) {
       const b = st.before.find((x) => x.name === name);
       const a = st.after.find((x) => x.name === name);
-      parts.push(`<span class="cap-change"><code>${esc(name)}</code> ${b && b.value !== undefined ? `${esc(b.shown)} → ` : ''}${esc(a.value === undefined ? '값 없음' : a.shown)} <em>변경</em></span>`);
+      parts.push(`<span class="cap-change"><code>${esc(name)}</code> ${b && b.value !== undefined ? `${esc(b.shown)} → ` : ''}${esc(a.value === undefined ? (tr("ui.noValue")) : a.shown)} <em>${tr("ui.changed")}</em></span>`);
     }
     const readOnly = st.reads.filter((n) => !st.changed.includes(n));
-    if (readOnly.length) parts.push(`<span class="cap-read">${readOnly.map((n) => `<code>${esc(n)}</code>`).join(', ')} <em>읽음</em></span>`);
-    if (st.kind === 'cout') parts.push('<span class="cap-out"><em>출력만</em> 화면에 글자가 나왔고 변수는 그대로입니다</span>');
-    if (st.inputs && st.inputs.length) parts.push(`<span>입력 ${st.inputs.map((x) => `${esc(x.text)} → <code>${esc(x.name)}</code>`).join(', ')}</span>`);
-    if (st.kind === 'return' || st.kind === 'end') parts.push('<span>프로그램 종료</span>');
+    if (readOnly.length) parts.push(`<span class="cap-read">${readOnly.map((n) => `<code>${esc(n)}</code>`).join(', ')} <em>${tr("ui.read")}</em></span>`);
+    if (st.kind === 'cout') parts.push(("<span class=\"cap-out\"><em>" + tr("ui.outputOnly") + "</em> " + tr("ui.textAppearedOnScreenVariablesAre") + "</span>"));
+    if (st.inputs && st.inputs.length) parts.push(`<span>${tr("ui.input")} ${st.inputs.map((x) => `${esc(x.text)} → <code>${esc(x.name)}</code>`).join(', ')}</span>`);
+    if (st.kind === 'return' || st.kind === 'end') parts.push(("<span>" + tr("ui.programEnded") + "</span>"));
     return parts.join(' · ');
   }
 
@@ -958,31 +994,31 @@
       const id = w.placed[i];
       const card = id && m.cards.find((c) => c.id === id);
       const state = res && card ? (i < res.correctPrefix ? 'right' : i === res.wrongIndex ? 'wrong' : '') : '';
-      const stateText = state === 'right' ? `${icon('check', 'e')}<span class="sr">맞음</span>` : state === 'wrong' ? `${icon('cross', 'r')}<span class="sr">흐름이 끊김</span>` : '';
+      const stateText = state === 'right' ? `${icon('check', 'e')}<span class="sr">${tr("ui.correct")}</span>` : state === 'wrong' ? `${icon('cross', 'r')}<span class="sr">${tr("ui.sequenceBroken")}</span>` : '';
       return `<li class="slot ${card ? 'filled' : ''} ${state}">
         <span class="slot-no">${i + 1}</span>
-        ${card ? `<button class="card placed" data-unplace="${i}" aria-label="${i + 1}번째 칸: ${esc(card.label)}. 누르면 빠집니다">${itemImg(card.item, 3)}<span><b>${esc(card.label)}</b><small>${esc(card.sub)}</small></span>${stateText}</button>` : '<span class="slot-empty">빈 칸</span>'}
+        ${card ? `<button class="card placed" data-unplace="${i}" aria-label="${tr('format.slot', { number: i + 1, label: esc(card.label) })}">${itemImg(card.item, 3)}<span><b>${esc(card.label)}</b><small>${esc(card.sub)}</small></span>${stateText}</button>` : ("<span class=\"slot-empty\">" + tr("ui.emptySlot") + "</span>")}
       </li>`;
     }).join('');
     const pool = w.pool.map((id) => {
       const card = m.cards.find((c) => c.id === id);
-      return `<button class="card" data-place="${id}" aria-label="${esc(card.label)} 카드를 다음 빈 칸에 놓기">${itemImg(card.item, 3)}<span><b>${esc(card.label)}</b><small>${esc(card.sub)}</small></span></button>`;
+      return `<button class="card" data-place="${id}" aria-label="${esc(card.label)}${tr("ui.placeCardInTheNextEmpty")}">${itemImg(card.item, 3)}<span><b>${esc(card.label)}</b><small>${esc(card.sub)}</small></span></button>`;
     }).join('');
     const done = rec(m).status === 'done';
     let quiz = '';
     if (done) {
-      quiz = `<div class="quiz"><h3>상황 질문 · 다른 상황에 적용하기</h3>${m.quiz.map((q, qi) => {
+      quiz = `<div class="quiz"><h3>${tr("ui.scenarioQuestionsApplyInAnotherSituation")}</h3>${m.quiz.map((q, qi) => {
         const chosen = w.quiz[qi];
         return `<div class="q"><p>${qi + 1}. ${esc(q.q)}</p><div class="q-options">${q.options.map((o, oi) => {
           const cls = chosen === oi ? (o.ok ? 'right' : 'wrong') : '';
           return `<button class="btn opt ${cls}" data-quiz="${qi}:${oi}" aria-pressed="${chosen === oi}">${chosen === oi ? icon(o.ok ? 'check' : 'cross', o.ok ? 'e' : 'r') : ''}${esc(o.t)}</button>`;
-        }).join('')}</div>${chosen !== undefined ? `<p class="why ${q.options[chosen].ok ? 'ok' : 'no'}">${q.options[chosen].ok ? '맞습니다. ' : '다시 생각해 보세요. '}${esc(q.options[chosen].why)}</p>` : ''}</div>`;
+        }).join('')}</div>${chosen !== undefined ? `<p class="why ${q.options[chosen].ok ? 'ok' : 'no'}">${q.options[chosen].ok ? (tr("ui.correct2")) : (tr("ui.thinkAgain"))}${esc(q.options[chosen].why)}</p>` : ''}</div>`;
       }).join('')}</div>`;
     }
-    return `${benchHead('빌드 순서 카드', '카드를 누르면 다음 빈 칸에 놓입니다. 놓은 카드를 누르면 빠집니다. 다 놓은 뒤 아래 순서 확인을 누르세요.')}
+    return `${benchHead((tr("ui.buildSequenceCards")), (tr("ui.selectACardToPlaceIt")))}
       <ol class="slots">${slots}</ol>
-      <p class="tray-title">남은 카드</p>
-      <div class="pool">${pool || '<p class="muted">모든 카드를 놓았습니다.</p>'}</div>
+      <p class="tray-title">${tr("ui.remainingCards")}</p>
+      <div class="pool">${pool || ("<p class=\"muted\">" + tr("ui.allCardsPlaced") + "</p>")}</div>
       ${quiz}`;
   }
 
@@ -997,21 +1033,21 @@
     }).join('');
     let compare = '';
     if (w.predict.submitted && w.predict.actual && !w.predict.revealed) {
-      compare = '<p class="muted">아래 조작 막대의 실행 또는 한 단계로 마지막 줄까지 진행하세요. 끝나면 예상과 실제를 비교합니다.</p>';
+      compare = ("<p class=\"muted\">" + tr("ui.useRunOrStepOnThe") + "</p>");
     } else if (w.predict.submitted && w.predict.actual) {
-      compare = `<div class="compare"><h3>예상과 실제</h3><table><tr><th>질문</th><th>내 예상</th><th>실제 출력</th></tr>${p.questions.map((q, i) => {
+      compare = `<div class="compare"><h3>${tr("ui.predictionAndResult")}</h3><table><tr><th>${tr("ui.question")}</th><th>${tr("ui.myPrediction")}</th><th>${tr("ui.actualOutput")}</th></tr>${p.questions.map((q, i) => {
         const ok = w.predict.answers[i] === w.predict.actual[i];
-        return `<tr class="${ok ? 'ok' : 'no'}"><td>${esc(q.label)}</td><td>${esc(w.predict.answers[i])}</td><td>${esc(w.predict.actual[i])} ${ok ? '✓ 일치' : '✗ 다름'}</td></tr>`;
+        return `<tr class="${ok ? 'ok' : 'no'}"><td>${esc(q.label)}</td><td>${esc(w.predict.answers[i])}</td><td>${esc(w.predict.actual[i])} ${ok ? (tr("ui.match")) : (tr("ui.different"))}</td></tr>`;
       }).join('')}</table>
-      <p>5 와 2 는 둘 다 정수라 <code>5 / 2</code> 는 소수점 아래를 버린 2 가 됩니다. 한쪽이 실수인 <code>5 / 2.0</code> 은 2.5 입니다. (강의 p.6)</p>
-      <button class="btn primary" data-action="to-task">${icon('arrow')}배분 장치 고치러 가기</button></div>`;
+      <p>${tr("ui.both5And2AreIntegers")}<code>5 / 2</code>${tr("ui.becomes2AfterDiscardingTheFractional")}<code>5 / 2.0</code>${tr("ui.is25LectureP6")}</p>
+      <button class="btn primary" data-action="to-task">${icon('arrow')}${tr("ui.goFixTheDistributionDevice")}</button></div>`;
     }
     const st = stepState(w);
     const code = p.program ? codeView(p.program.split('\n'), { activeLine: st ? st.line : null, marks: st ? { change: st.changed, read: st.reads } : null }) : '';
-    return `${benchHead('실행 전에 예상하기', esc(p.intro))}
+    return `${benchHead((tr("ui.predictBeforeRunning")), esc(p.intro))}
       ${code}
       <div class="predict">${qs}</div>
-      ${w.predict.submitted ? '' : `<div class="bench-actions"><button class="btn primary" data-action="submit-predict">${icon('check')}예상 확정</button></div>`}
+      ${w.predict.submitted ? '' : `<div class="bench-actions"><button class="btn primary" data-action="submit-predict">${icon('check')}${tr("ui.submitPrediction")}</button></div>`}
       ${compare}`;
   }
 
@@ -1023,20 +1059,20 @@
     if (!w.activeBlank || !v.blanks[w.activeBlank]) w.activeBlank = keys.find((k) => choices[k] === undefined) || null;
     const tabs = m.variants.length > 1 ? `<div class="variant-tabs" role="tablist">${m.variants.map((x) => {
       const locked = x.id === 'apply' && rec(m).status !== 'done';
-      return `<button class="btn small vtab ${x.id === w.variant ? 'on' : ''}" role="tab" aria-selected="${x.id === w.variant}" data-variant="${x.id}" ${locked ? 'disabled title="기본 미션을 끝내면 열립니다"' : ''}>${locked ? icon('lock') : ''}${esc(x.label)}${locked ? '<span class="sr"> (잠김)</span>' : ''}</button>`;
+      return `<button class="btn small vtab ${x.id === w.variant ? 'on' : ''}" role="tab" aria-selected="${x.id === w.variant}" data-variant="${x.id}" ${locked ? ("disabled title=\"" + tr("ui.unlocksAfterCompletingTheBaseMission") + "\"") : ''}>${locked ? icon('lock') : ''}${esc(x.label)}${locked ? ("<span class=\"sr\">" + tr("ui.locked2") + "</span>") : ''}</button>`;
     }).join('')}</div>` : '';
     const params = v.tests ? (w.run && w.run.kind === 'task' && w.run.test ? w.run.test.params : v.tests[w.testIndex].params) : null;
     const err = w.run && w.run.result.error;
     const active = w.activeBlank;
     const tray = active
-      ? `<div class="tray" aria-label="코드 카드"><p class="tray-title">빈칸 ${keys.indexOf(active) + 1}에 넣을 코드 카드</p><div class="cards">${v.blanks[active].map((opt, idx) => `
+      ? `<div class="tray" aria-label="${tr("ui.codeCards")}"><p class="tray-title">${tr('format.tray', { number: keys.indexOf(active) + 1 })}</p><div class="cards">${v.blanks[active].map((opt, idx) => `
           <button class="code-card ${choices[active] === idx ? 'chosen' : ''}" data-card="${idx}" aria-pressed="${choices[active] === idx}">
-            <code>${esc(opt.code === '' ? '‹비움›' : opt.code)}</code>${choices[active] === idx ? `<span class="chosen-mark">${icon('check')}<span class="sr">넣은 카드</span></span>` : ''}
+            <code>${esc(opt.code === '' ? (tr("ui.empty")) : opt.code)}</code>${choices[active] === idx ? `<span class="chosen-mark">${icon('check')}<span class="sr">${tr("ui.placedCard")}</span></span>` : ''}
           </button>`).join('')}</div></div>`
-      : '<div class="tray"><p class="tray-title">모든 빈칸을 채웠습니다. 바꾸려면 코드의 칸을 누르세요.</p></div>';
-    const tests = v.tests ? `<div class="test-row"><span class="test-label">검사 입력</span>${v.tests.map((t, i) => `<button class="btn small chip ${i === w.testIndex ? 'on' : ''}" data-test="${i}" aria-pressed="${i === w.testIndex}">${esc(t.label)}${i === 0 ? ' (기본)' : ''}</button>`).join('')}
-      <button class="btn small" data-action="apply-check" ${rec(m).status === 'done' ? '' : 'disabled title="기본 입력에서 먼저 성공하세요"'}>${icon('star')}다른 입력으로 검사</button></div>` : '';
-    return `${benchHead('코드 작업대', '코드의 ▢ 칸을 누르고 아래 코드 카드를 고르세요. 칸을 채우면 다음 빈칸으로 넘어갑니다.')}
+      : ("<div class=\"tray\"><p class=\"tray-title\">" + tr("ui.allBlanksAreFilledSelectA") + "</p></div>");
+    const tests = v.tests ? `<div class="test-row"><span class="test-label">${tr("ui.testInput")}</span>${v.tests.map((t, i) => `<button class="btn small chip ${i === w.testIndex ? 'on' : ''}" data-test="${i}" aria-pressed="${i === w.testIndex}">${esc(t.label)}${i === 0 ? (tr("ui.default")) : ''}</button>`).join('')}
+      <button class="btn small" data-action="apply-check" ${rec(m).status === 'done' ? '' : ("disabled title=\"" + tr("ui.firstSucceedWithTheDefaultInput") + "\"")}>${icon('star')}${tr("ui.testWithOtherInputs")}</button></div>` : '';
+    return `${benchHead((tr("ui.codeWorkbench")), (tr("ui.selectAInTheCodeThen")))}
       ${tabs}
       <div class="code-scroll">${codeView(v.template.split('\n'), { blanks: v.blanks, choices, params, activeBlank: active, activeLine: st && !st.error ? st.line : null, errorLine: err ? err.line : null, marks: st ? { change: st.changed, read: st.reads } : null })}</div>
       ${tray}
@@ -1045,26 +1081,26 @@
 
   function editorBench(m, w) {
     const err = w.run && w.run.result.error;
-    const inputRow = `<div class="test-row"><label class="test-label" for="cinInput">입력(cin)</label><input id="cinInput" class="px-input" inputmode="numeric" value="${esc(w.input)}" size="6">
+    const inputRow = `<div class="test-row"><label class="test-label" for="cinInput">${tr("ui.inputCin")}</label><input id="cinInput" class="px-input" inputmode="numeric" value="${esc(w.input)}" size="6">
       ${m.tests.map((t) => `<button class="btn small chip ${t.input === w.input.trim() ? 'on' : ''}" data-input="${esc(t.input)}" aria-pressed="${t.input === w.input.trim()}">${esc(t.input)}</button>`).join('')}
-      <button class="btn small" data-action="apply-check" ${rec(m).status === 'done' ? '' : 'disabled title="기본 입력에서 먼저 성공하세요"'}>${icon('star')}다른 입력으로 검사</button></div>`;
+      <button class="btn small" data-action="apply-check" ${rec(m).status === 'done' ? '' : ("disabled title=\"" + tr("ui.firstSucceedWithTheDefaultInput") + "\"")}>${icon('star')}${tr("ui.testWithOtherInputs")}</button></div>`;
     if (!w.editing && w.run) {
       const st = stepState(w);
-      return `${benchHead('코드 작업대 · 실행 보기', '실행 중인 줄과 그 줄에서 바뀐 변수(노란 밑줄)·읽은 변수(파란 점선)가 표시됩니다.')}
+      return `${benchHead((tr("ui.codeWorkbenchExecutionView")), (tr("ui.theCurrentLineAndVariablesChanged")))}
         <div class="code-scroll">${codeView(w.run.source.split('\n'), { activeLine: st && !st.error ? st.line : null, errorLine: err ? err.line : null, marks: st ? { change: st.changed, read: st.reads } : null })}</div>
-        <div class="bench-actions"><button class="btn" data-action="edit">${icon('edit')}코드 고치기</button></div>
+        <div class="bench-actions"><button class="btn" data-action="edit">${icon('edit')}${tr("ui.editCode")}</button></div>
         ${inputRow}`;
     }
     const lines = w.code.split('\n');
     const gutter = lines.map((l, i) => {
       const no = i + 1;
       const isErr = err && err.line === no;
-      return `<span class="${isErr ? 'err' : ''} ${/수정할 코드/.test(l) ? 'fix' : ''}">${isErr ? '✗' : ''}${no}</span>`;
+      return `<span class="${isErr ? 'err' : ''} ${l.includes(m.fixMark) ? 'fix' : ''}">${isErr ? '✗' : ''}${no}</span>`;
     }).join('');
-    return `${benchHead('코드 작업대 · 짧은 코드 완성', "'수정할 코드' 줄을 고치고 출력 문장을 직접 쓰세요. Ctrl/⌘+Enter 로 실행합니다. 1장 문법만 실행됩니다.")}
+    return `${benchHead((tr("ui.codeWorkbenchCompleteTheShortProgram")), (tr("ui.fixTheCodeToEditLine")))}
       <div class="editor-wrap"><div class="gutter" id="gutter" aria-hidden="true">${gutter}</div>
-      <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-label="C++ 코드 편집">${esc(w.code)}</textarea></div>
-      <div class="bench-actions"><button class="btn small ghost" data-action="reset-code">${icon('reset')}처음 코드로 되돌리기</button></div>
+      <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-label="${tr("ui.editCCode")}">${esc(w.code)}</textarea></div>
+      <div class="bench-actions"><button class="btn small ghost" data-action="reset-code">${icon('reset')}${tr("ui.restoreStarterCode")}</button></div>
       ${inputRow}`;
   }
 
@@ -1080,7 +1116,7 @@
     const w = W();
     const el = $('#resultPane');
     if (m.kind === 'order') {
-      el.innerHTML = `${feedbackHtml(w.feedback)}<div class="px-panel result-note">이 미션은 코드를 실행하지 않고 빌드 과정을 연결합니다. 다음 미션부터 코드를 한 단계씩 실행합니다.</div>`;
+      el.innerHTML = `${feedbackHtml(w.feedback)}<div class="px-panel result-note">${tr("ui.inThisMissionConnectTheBuild")}</div>`;
       return;
     }
     const run = w.run;
@@ -1089,48 +1125,48 @@
     const lines = run ? run.source.split('\n') : [];
     const marks = st ? { change: st.changed, read: st.reads } : null;
     const lineBox = !run
-      ? '<p class="muted">실행하면 첫 줄부터 한 단계씩 진행합니다. 실행 중인 줄, 장면에서 바뀐 대상, 변수 표의 바뀐 값이 함께 표시됩니다.</p>'
+      ? ("<p class=\"muted\">" + tr("ui.runToStepThroughFromThe") + "</p>")
       : !st
-        ? `<p class="err-text">${icon('cross', 'r')} ${esc(ERROR_LABEL[run.result.error.kind] || '오류')} · ${run.result.error.line}번 줄</p><pre class="src-line">${esc((lines[run.result.error.line - 1] || '').trim())}</pre><p>${esc(run.result.error.message)}</p><p class="muted small">실행 파일이 만들어지지 않아 한 줄도 실행되지 않았습니다.</p>`
-        : `<p class="step-no">${pixText(`STEP ${run.stepIndex + 1}/${total}`, 'k', 2)} <b>${st.line}번 줄</b>${st.error ? ` · <span class="err-text">${icon('cross', 'r')}여기서 멈춤</span>` : ''}</p>
+        ? `<p class="err-text">${icon('cross', 'r')} ${esc(ERROR_LABEL[run.result.error.kind] || (tr("ui.error")))} · ${tr('format.line', { line: run.result.error.line })}</p><pre class="src-line">${esc((lines[run.result.error.line - 1] || '').trim())}</pre><p>${esc(run.result.error.message)}</p><p class="muted small">${tr("ui.noExecutableWasCreatedSoNo")}</p>`
+        : `<p class="step-no">${pixText(`STEP ${run.stepIndex + 1}/${total}`, 'k', 2)} <b>${tr('format.line', { line: st.line })}</b>${st.error ? ` · <span class="err-text">${icon('cross', 'r')}${tr("ui.stoppedHere")}</span>` : ''}</p>
            <pre class="src-line">${highlight((lines[st.line - 1] || '').trim(), marks)}</pre>
            <ul class="notes">${st.notes.map((n) => `<li class="${st.error ? 'err-text' : ''}">${esc(n)}</li>`).join('')}</ul>`;
 
     const outText = st ? st.outAfter : '';
     const newPart = st ? st.printed : '';
-    const outBox = `<pre class="terminal" aria-label="출력">${esc(outText.slice(0, outText.length - newPart.length))}<span class="new">${esc(newPart)}</span><span class="cursor">_</span></pre>
-      ${run && run.test && run.test.input !== undefined ? `<p class="muted small">입력(cin): <code>${esc(run.test.input || '(없음)')}</code></p>` : ''}
-      ${st && st.kind === 'cout' ? '<p class="small out-note"><em class="b-output">출력만</em> 화면에 글자를 보냈을 뿐 변수와 장면 상태는 그대로입니다.</p>' : ''}`;
+    const outBox = `<pre class="terminal" aria-label="${tr("ui.output")}">${esc(outText.slice(0, outText.length - newPart.length))}<span class="new">${esc(newPart)}</span><span class="cursor">_</span></pre>
+      ${run && run.test && run.test.input !== undefined ? `<p class="muted small">${tr("ui.inputCin2")}<code>${esc(run.test.input || (tr("ui.none")))}</code></p>` : ''}
+      ${st && st.kind === 'cout' ? ("<p class=\"small out-note\"><em class=\"b-output\">" + tr("ui.outputOnly") + "</em> " + tr("ui.textWasSentToTheScreen") + "</p>") : ''}`;
 
     const varRows = st && st.after.length
       ? st.after.map((v) => {
         const before = st.before.find((b) => b.name === v.name);
         const changed = st.changed.includes(v.name);
         const read = !changed && st.reads.includes(v.name);
-        const badge = changed ? '<em class="b-change">변경</em>' : read ? '<em class="b-read">읽음</em>' : '';
-        return `<tr class="${changed ? 'changed' : read ? 'read' : ''}"><td><code>${esc(v.name)}</code>${badge}</td><td>${v.type}</td><td>${before ? esc(shownValue(before)) : '<span class="muted">없음</span>'}</td><td><b>${esc(shownValue(v))}</b></td></tr>`;
+        const badge = changed ? ("<em class=\"b-change\">" + tr("ui.changed") + "</em>") : read ? ("<em class=\"b-read\">" + tr("ui.read") + "</em>") : '';
+        return `<tr class="${changed ? 'changed' : read ? 'read' : ''}"><td><code>${esc(v.name)}</code>${badge}</td><td>${v.type}</td><td>${before ? esc(shownValue(before)) : ("<span class=\"muted\">" + tr("ui.none2") + "</span>")}</td><td><b>${esc(shownValue(v))}</b></td></tr>`;
       }).join('')
-      : '<tr><td colspan="4" class="muted">아직 만든 변수가 없습니다.</td></tr>';
+      : ("<tr><td colspan=\"4\" class=\"muted\">" + tr("ui.noVariablesCreatedYet") + "</td></tr>");
 
     el.innerHTML = `${feedbackHtml(w.feedback)}
       ${w.applyReport ? applyTable(w.applyReport) : ''}
       <div class="result-grid">
-        <section class="px-panel"><h3>실행 줄</h3>${lineBox}</section>
-        <section class="px-panel"><h3>출력 (cout)</h3>${outBox}</section>
-        <section class="px-panel"><h3>변수 상태 <small>이 줄 실행 전 → 후</small></h3><div class="table-scroll"><table class="vars"><tr><th>이름</th><th>타입</th><th>전</th><th>후</th></tr>${varRows}</table></div></section>
+        <section class="px-panel"><h3>${tr("ui.executionLine")}</h3>${lineBox}</section>
+        <section class="px-panel"><h3>${tr("ui.outputCout")}</h3>${outBox}</section>
+        <section class="px-panel"><h3>${tr("ui.variableState")} <small>${tr("ui.beforeAfterThisLine")}</small></h3><div class="table-scroll"><table class="vars"><tr><th>${tr("ui.name")}</th><th>${tr("ui.type")}</th><th>${tr("ui.before")}</th><th>${tr("ui.after")}</th></tr>${varRows}</table></div></section>
       </div>`;
     const ref = $('#reflection');
     if (ref) ref.value = rec(m).reflection;
   }
 
   function shownValue(v) {
-    return v.value === undefined ? '? (값 없음)' : v.shown;
+    return v.value === undefined ? (tr("ui.noValue2")) : v.shown;
   }
 
   function applyTable(report) {
-    return `<div class="table-scroll px-panel"><table class="apply"><tr><th>검사 입력</th><th>결과</th><th>설명</th></tr>${report.map((r, i) => `
-      <tr class="${r.verdict.pass ? 'ok' : 'no'}"><td>${esc(r.test.label)}</td><td>${r.verdict.pass ? `${icon('check', 'e')} 통과` : `${icon('cross', 'r')} 다름`}</td>
-      <td>${esc(r.verdict.message)} ${r.verdict.pass ? '' : `<button class="btn small" data-retest="${i}">${icon('play')}이 입력으로 실행</button>`}</td></tr>`).join('')}</table></div>`;
+    return `<div class="table-scroll px-panel"><table class="apply"><tr><th>${tr("ui.testInput")}</th><th>${tr("ui.result")}</th><th>${tr("ui.explanation2")}</th></tr>${report.map((r, i) => `
+      <tr class="${r.verdict.pass ? 'ok' : 'no'}"><td>${esc(r.test.label)}</td><td>${r.verdict.pass ? `${icon('check', 'e')}${tr("ui.passed")}` : `${icon('cross', 'r')}${tr("ui.different2")}`}</td>
+      <td>${esc(r.verdict.message)} ${r.verdict.pass ? '' : `<button class="btn small" data-retest="${i}">${icon('play')}${tr("ui.runWithThisInput")}</button>`}</td></tr>`).join('')}</table></div>`;
   }
 
   function feedbackHtml(f) {
@@ -1142,15 +1178,15 @@
       <p class="fb-title">${ic}${esc(f.title)}</p>
       <p>${esc(f.message)}</p>
       ${f.details && f.details.length ? `<ul>${f.details.map((d) => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}
-      ${f.reuse ? `<p class="reuse"><b>다시 쓸 상황</b> ${esc(f.reuse)}</p>` : ''}
-      ${f.next ? `<p class="next"><b>다음</b> ${esc(f.next)}</p>` : ''}
+      ${f.reuse ? `<p class="reuse"><b>${tr("ui.whenToReuse")}</b> ${esc(f.reuse)}</p>` : ''}
+      ${f.next ? `<p class="next"><b>${tr("ui.next")}</b> ${esc(f.next)}</p>` : ''}
       <div class="fb-actions">
-        ${f.fix ? `<button class="btn primary" data-action="fix">${icon('arrow')}고칠 곳으로 이동</button>` : ''}
+        ${f.fix ? `<button class="btn primary" data-action="fix">${icon('arrow')}${tr("ui.goToFix")}</button>` : ''}
         ${f.action && f.action.variant ? `<button class="btn primary" data-variant="${f.action.variant}">${icon('arrow')}${esc(f.action.label)}</button>` : ''}
         ${f.action && f.action.apply ? `<button class="btn" data-action="apply-check">${icon('star')}${esc(f.action.label)}</button>` : ''}
-        ${f.tone === 'success' && nm && rec(m).status === 'done' ? `<button class="btn primary" data-mission="${nm.id}">${icon('arrow')}다음 미션 ${nm.id} ${esc(nm.title)}</button>` : ''}
+        ${f.tone === 'success' && nm && rec(m).status === 'done' ? `<button class="btn primary" data-mission="${nm.id}">${icon('arrow')}${tr("ui.nextMission")}${nm.id} ${esc(nm.title)}</button>` : ''}
       </div>
-      ${f.reflect ? `<label class="reflect">왜 이 코드를 골랐는지 한 문장으로 적어 보세요 (선택, 튜터 기록에 남습니다)<input id="reflection" class="px-input" maxlength="200" placeholder="예: ○○ 때문에 이 줄을 이렇게 바꿨다"></label>` : ''}
+      ${f.reflect ? `<label class="reflect">${tr("ui.inOneSentenceExplainWhyYou")}<input id="reflection" class="px-input" maxlength="200" placeholder="${tr("ui.exampleIChangedThisLineBecause")}"></label>` : ''}
     </div>`;
   }
 
@@ -1163,8 +1199,8 @@
     if (m.kind === 'order') {
       const placedN = w.placed.filter(Boolean).length;
       el.innerHTML = `<div class="ctrl-buttons">
-          <button class="btn primary" data-action="play" ${placedN ? '' : 'disabled'} aria-keyshortcuts="k">${icon('check')}<span>순서 확인</span></button>
-          <button class="btn" data-action="reset-run" ${placedN ? '' : 'disabled'} aria-keyshortcuts="r">${icon('reset')}<span>카드 모두 빼기</span></button>
+          <button class="btn primary" data-action="play" ${placedN ? '' : 'disabled'} aria-keyshortcuts="k">${icon('check')}<span>${tr("ui.checkSequence")}</span></button>
+          <button class="btn" data-action="reset-run" ${placedN ? '' : 'disabled'} aria-keyshortcuts="r">${icon('reset')}<span>${tr("ui.removeAllCards")}</span></button>
         </div>
         <div class="ctrl-status" aria-live="polite">${orderStatus(m, w, placedN)}</div>`;
       return;
@@ -1174,52 +1210,52 @@
     const end = can && atEnd(run);
     const start = can && run.stepIndex <= 0;
     const predictWaiting = w.phase === 'predict' && !run;
-    let playLabel = '실행';
+    let playLabel = (tr("ui.run"));
     let playIcon = 'play';
-    if (isPlaying()) { playLabel = '일시정지'; playIcon = 'pause'; }
-    else if (run && (end || run.stepIndex < 0)) playLabel = '다시 실행';
-    else if (run) playLabel = '계속';
+    if (isPlaying()) { playLabel = (tr("ui.pause")); playIcon = 'pause'; }
+    else if (run && (end || run.stepIndex < 0)) playLabel = (tr("ui.runAgain"));
+    else if (run) playLabel = (tr("ui.continue"));
     el.innerHTML = `<div class="ctrl-buttons">
-        <button class="btn primary" data-action="play" ${predictWaiting ? 'disabled' : ''} aria-keyshortcuts="k" title="실행/일시정지 (K)">${icon(playIcon)}<span>${playLabel}</span></button>
-        <button class="btn" data-action="step-next" ${predictWaiting || (can && end) ? 'disabled' : ''} aria-keyshortcuts="n" title="한 단계 (N)">${icon('step')}<span>한 단계</span></button>
-        <button class="btn" data-action="step-prev" ${can && !start ? '' : 'disabled'} aria-keyshortcuts="b" title="한 단계 뒤로 (B)">${icon('back')}<span>뒤로</span></button>
-        <button class="btn" data-action="step-last" ${can && !end ? '' : 'disabled'} title="끝까지">${icon('end')}<span>끝까지</span></button>
-        <button class="btn" data-action="reset-run" ${run ? '' : 'disabled'} aria-keyshortcuts="r" title="초기화 (R)">${icon('reset')}<span>초기화</span></button>
+        <button class="btn primary" data-action="play" ${predictWaiting ? 'disabled' : ''} aria-keyshortcuts="k" title="${tr("ui.runPauseK")}">${icon(playIcon)}<span>${playLabel}</span></button>
+        <button class="btn" data-action="step-next" ${predictWaiting || (can && end) ? 'disabled' : ''} aria-keyshortcuts="n" title="${tr("ui.stepN")}">${icon('step')}<span>${tr("ui.step")}</span></button>
+        <button class="btn" data-action="step-prev" ${can && !start ? '' : 'disabled'} aria-keyshortcuts="b" title="${tr("ui.stepBackB")}">${icon('back')}<span>${tr("ui.back")}</span></button>
+        <button class="btn" data-action="step-last" ${can && !end ? '' : 'disabled'} title="${tr("ui.goToEnd")}">${icon('end')}<span>${tr("ui.goToEnd")}</span></button>
+        <button class="btn" data-action="reset-run" ${run ? '' : 'disabled'} aria-keyshortcuts="r" title="${tr("ui.resetR")}">${icon('reset')}<span>${tr("ui.reset")}</span></button>
       </div>
       <div class="ctrl-status" aria-live="polite">${runStatus(m, w)}</div>
-      <span class="sim-tag">교육용 시뮬레이터 · 1장 문법만 · 실제 컴파일러 아님</span>`;
+      <span class="sim-tag">${tr("ui.educationalSimulatorChapter1SyntaxOnly")}</span>`;
   }
 
   function orderStatus(m, w, placedN) {
     const c = w.lastCheck;
-    if (c && c.pass) return `${icon('check', 'G')}<b>배선 완료</b>`;
-    if (c && w.orderResult) return `${icon('cross', 'o')}<b>${c.prefix + 1}번째 칸에서 끊김</b>`;
-    return `카드 <b>${placedN}/${m.cards.length}</b> 배치`;
+    if (c && c.pass) return `${icon('check', 'G')}<b>${tr("ui.wiringComplete")}</b>`;
+    if (c && w.orderResult) return `${icon('cross', 'o')}<b>${tr('format.brokenSlot', { number: c.prefix + 1 })}</b>`;
+    return `${tr("ui.cards")}<b>${placedN}/${m.cards.length}</b>${tr("ui.placed")}`;
   }
 
   function runStatus(m, w) {
     const run = w.run;
     if (!run) {
-      if (w.phase === 'predict') return w.predict.submitted ? '준비 완료' : '먼저 작업대에서 결과를 예상하세요';
-      return '준비: 실행 또는 한 단계를 누르세요';
+      if (w.phase === 'predict') return w.predict.submitted ? (tr("ui.ready")) : (tr("ui.firstPredictTheResultAtThe"));
+      return (tr("ui.readySelectRunOrStep"));
     }
-    if (run.stepIndex < 0) return `${icon('cross', 'r')}<b>${run.result.stage === 'link' ? '링크' : '컴파일'} 오류 · ${run.result.error.line}번 줄</b>`;
+    if (run.stepIndex < 0) return `${icon('cross', 'r')}<b>${run.result.stage === 'link' ? (tr("ui.link")) : (tr("ui.compile"))}${tr("ui.error2")}${tr('format.line', { line: run.result.error.line })}</b>`;
     const st = stepState(w);
     const total = totalSteps(run);
     let what = '';
-    if (st.error) what = `${icon('cross', 'r')}멈춤`;
+    if (st.error) what = `${icon('cross', 'r')}${tr("ui.stopped")}`;
     else if (st.changed.length) what = st.changed.map((n) => { const a = st.after.find((x) => x.name === n); return `<code>${esc(n)}</code>=${esc(a.value === undefined ? '?' : a.shown)}`; }).join(' ');
-    else if (st.kind === 'cout') what = '출력만';
-    else if (st.kind === 'return' || st.kind === 'end') what = '종료';
+    else if (st.kind === 'cout') what = (tr("ui.outputOnly"));
+    else if (st.kind === 'return' || st.kind === 'end') what = (tr("ui.ended"));
     let verdict = '';
-    if (run.kind === 'task' && run.graded) verdict = run.pass ? ` ${icon('check', 'G')}<b>성공</b>` : ` ${icon('cross', 'o')}<b>목표와 다름</b>`;
-    return `<span class="st-step">${st.line}번 줄 · ${run.stepIndex + 1}/${total}</span> <span class="st-what">${what}</span>${verdict}${isPlaying() ? ' <span class="st-play">재생 중</span>' : ''}`;
+    if (run.kind === 'task' && run.graded) verdict = run.pass ? ` ${icon('check', 'G')}<b>${tr("ui.success")}</b>` : ` ${icon('cross', 'o')}<b>${tr("ui.doesNotMeetGoal")}</b>`;
+    return `<span class="st-step">${tr('format.line', { line: st.line })} · ${run.stepIndex + 1}/${total}</span> <span class="st-what">${what}</span>${verdict}${isPlaying() ? (" <span class=\"st-play\">" + tr("ui.playing") + "</span>") : ''}`;
   }
 
   function renderPaneTabs() {
     const el = $('#paneTabs');
-    const tabs = [['scene', '장면'], ['code', '코드'], ['result', '결과']];
-    el.innerHTML = tabs.map(([id, label]) => `<button class="pane-tab ${ui.pane === id ? 'on' : ''}" role="tab" aria-selected="${ui.pane === id}" aria-controls="pane-${id}" data-pane-tab="${id}">${label}${id === 'result' && ui.resultUnseen ? ' <em class="new-dot">새 결과</em>' : ''}</button>`).join('');
+    const tabs = [['scene', (tr("ui.scene"))], ['code', (tr("ui.code"))], ['result', (tr("ui.result"))]];
+    el.innerHTML = tabs.map(([id, label]) => `<button class="pane-tab ${ui.pane === id ? 'on' : ''}" role="tab" aria-selected="${ui.pane === id}" aria-controls="pane-${id}" data-pane-tab="${id}">${label}${id === 'result' && ui.resultUnseen ? (" <em class=\"new-dot\">" + tr("ui.newResult") + "</em>") : ''}</button>`).join('');
     $('#layout').dataset.pane = ui.pane;
   }
 
@@ -1233,28 +1269,28 @@
     const m = MISSIONS.find((x) => x.id === (ui.drawerMission || ui.missionId));
     let body = '';
     if (ui.drawer === 'tools') {
-      body = `<p class="muted small">${esc(m.id)} ${esc(m.title)} · 대상 → 입력 → 결과 → 바뀌는 상태 → 사용 상황 순서로 읽으세요.</p>${m.tools.map((t) => `
+      body = `<p class="muted small">${esc(m.id)} ${esc(m.title)}${tr("ui.readInOrderTargetInputResult")}</p>${m.tools.map((t) => `
         <div class="tool px-panel"><h3><code>${esc(t.name)}</code></h3><dl>
-          <dt>대상</dt><dd>${esc(t.target)}</dd><dt>입력</dt><dd>${esc(t.input)}</dd><dt>결과</dt><dd>${esc(t.result)}</dd>
-          <dt>바뀌는 상태</dt><dd>${esc(t.change)}</dd><dt>사용 상황</dt><dd>${esc(t.when)}</dd></dl></div>`).join('')}`;
+          <dt>${tr("ui.target")}</dt><dd>${esc(t.target)}</dd><dt>${tr("ui.input")}</dt><dd>${esc(t.input)}</dd><dt>${tr("ui.result")}</dt><dd>${esc(t.result)}</dd>
+          <dt>${tr("ui.stateChanges")}</dt><dd>${esc(t.change)}</dd><dt>${tr("ui.useCases")}</dt><dd>${esc(t.when)}</dd></dl></div>`).join('')}`;
     } else if (ui.drawer === 'hints') {
       const level = rec(m).hintLevel;
-      body = `<p class="muted small">힌트는 관찰할 곳 → 필요한 개념 → 일부 코드 → 해설 순서로 열립니다. 힌트를 봐도 실패로 기록하지 않습니다.</p>
+      body = `<p class="muted small">${tr("ui.hintsUnlockInOrderWhereTo")}</p>
         ${m.hints.slice(0, level).map((h, i) => `<div class="hint px-panel"><b>${i + 1}. ${HINT_STEPS[i]}</b><p>${esc(h).replace(/\n/g, '<br>')}</p></div>`).join('')}
-        ${level < m.hints.length ? `<button class="btn primary" data-action="open-hint">${icon('hint')}${level + 1}단계 힌트 열기: ${HINT_STEPS[level]}</button>` : '<p class="muted">모든 힌트를 열었습니다.</p>'}`;
+        ${level < m.hints.length ? `<button class="btn primary" data-action="open-hint">${icon('hint')}${tr('format.hintButton', { number: level + 1, name: HINT_STEPS[level] })}</button>` : ("<p class=\"muted\">" + tr("ui.allHintsUnlocked") + "</p>")}`;
     } else {
       body = `<p><b>MIT 6.096 ${esc(m.lecture.pages)}</b></p>${m.lecture.quotes.map((q) => `<blockquote>“${esc(q)}”</blockquote>`).join('')}
-        <p class="muted small">원문 인용입니다. 게임 미션은 이 강의를 참고한 별도 설계이며 MIT 가 만들거나 승인한 게임이 아닙니다.</p>`;
+        <p class="muted small">${tr("ui.theseAreOriginalQuotationsTheMissions")}</p>`;
     }
-    const tabs = [['hints', '힌트', 'hint'], ['tools', '개념', 'card'], ['lecture', '강의', 'book']];
+    const tabs = [['hints', (tr("ui.hints")), 'hint'], ['tools', (tr("ui.concepts")), 'card'], ['lecture', (tr("ui.lecture")), 'book']];
     d.innerHTML = `<div class="drawer-head"><div class="drawer-tabs" role="tablist">${tabs.map(([id, label, ic]) => `<button class="btn small ${ui.drawer === id ? 'on' : ''}" role="tab" aria-selected="${ui.drawer === id}" data-drawer="${id}">${icon(ic)}${label}</button>`).join('')}</div>
-      <button class="btn small ghost close" data-action="close-drawer" aria-label="닫기">${icon('close')}</button></div><div class="drawer-body">${body}</div>`;
+      <button class="btn small ghost close" data-action="close-drawer" aria-label="${tr("ui.close")}">${icon('close')}</button></div><div class="drawer-body">${body}</div>`;
   }
 
   function renderSaveState() {
     const el = $('#saveState');
     if (!el) return;
-    el.textContent = storageOk ? (progress.updatedAt ? '저장됨' : '') : '브라우저 저장 불가 · 기록 내보내기 사용';
+    el.textContent = storageOk ? (progress.updatedAt ? (tr("ui.saved")) : '') : (tr("ui.browserStorageUnavailableExportYourRecord"));
     el.className = storageOk ? 'save-ok' : 'save-bad';
   }
 
@@ -1262,13 +1298,13 @@
 
   function openMap() {
     const dlg = $('#mapDialog');
-    dlg.querySelector('.dlg-body').innerHTML = `<h2>${icon('map')} 섬 지도 · MIT 6.096 강의 순서</h2>
-      <p class="muted small">강의 하나가 섬의 구역 하나입니다. 지금은 1장만 플레이할 수 있고, 나머지는 순서대로 제작할 예정입니다.</p>
+    dlg.querySelector('.dlg-body').innerHTML = `<h2>${icon('map')} ${tr("ui.islandMapMIT6096Lecture")}</h2>
+      <p class="muted small">${tr("ui.eachLectureCorrespondsToOneIsland")}</p>
       <ol class="chapters">${CHAPTERS.map((c) => {
         const done = c.playable && MISSIONS.every((x) => rec(x).status === 'done');
         return `<li class="${c.playable ? 'open' : 'locked'}"><span class="ch-no">${pixText(String(c.no), c.playable ? 'k' : 'g', 3)}</span>
           <div><b>${esc(c.zone)}</b> <span class="muted">Lecture ${c.no} ${esc(c.lecture)} · ${esc(c.pages)}</span><br><small>${esc(c.action)}</small></div>
-          <span class="ch-state">${c.playable ? (done ? `${icon('check', 'e')}복구 완료` : `${icon('play')}플레이 가능`) : `${icon('lock', 'g')}제작 예정`}</span></li>`;
+          <span class="ch-state">${c.playable ? (done ? `${icon('check', 'e')}${tr("ui.restored")}` : `${icon('play')}${tr("ui.playable")}`) : `${icon('lock', 'g')}${tr("ui.planned")}`}</span></li>`;
       }).join('')}</ol>`;
     if (!dlg.open) dlg.showModal();
   }
@@ -1278,38 +1314,38 @@
     const rows = MISSIONS.map((m) => {
       const r = rec(m);
       const errs = Object.entries(r.errors).map(([k, v]) => `${ERROR_TYPES[k]} ${v}`).join(', ') || '–';
-      const status = { none: '미시도', trying: '시도 중', done: '완료' }[r.status];
-      return `<tr><td>${m.id} ${esc(m.title)}</td><td>${status}</td><td>${r.applied ? '확인' : '–'}</td><td>${r.attempts}</td><td>${r.hintLevel ? `${r.hintLevel}단계 (${HINT_STEPS[r.hintLevel - 1]})` : '안 봄'}</td><td>${esc(errs)}</td><td>${esc(r.reflection || '–')}</td></tr>`;
+      const status = { none: (tr("ui.notAttempted")), trying: (tr("ui.inProgress")), done: (tr("ui.complete2")) }[r.status];
+      return `<tr><td>${m.id} ${esc(m.title)}</td><td>${status}</td><td>${r.applied ? (tr("ui.confirmed")) : '–'}</td><td>${r.attempts}</td><td>${r.hintLevel ? tr('format.hintLevel', { number: r.hintLevel, name: HINT_STEPS[r.hintLevel - 1] }) : (tr("ui.notViewed"))}</td><td>${esc(errs)}</td><td>${esc(r.reflection || '–')}</td></tr>`;
     }).join('');
-    dlg.querySelector('.dlg-body').innerHTML = `<h2>${icon('record')} 학습 기록</h2>
-      <p class="muted small">이 기록은 이 브라우저에만 저장됩니다. 튜터에게 보내려면 파일로 내보내세요. 서버가 없어 자동으로 전달되지 않습니다.</p>
-      <div class="table-scroll"><table class="record"><tr><th>미션</th><th>진행</th><th>다른 입력 적용</th><th>실행/확인 횟수</th><th>마지막 힌트</th><th>오류 유형</th><th>마무리 설명</th></tr>${rows}</table></div>
+    dlg.querySelector('.dlg-body').innerHTML = `<h2>${icon('record')} ${tr("ui.learningRecord")}</h2>
+      <p class="muted small">${tr("ui.thisRecordIsStoredOnlyIn")}</p>
+      <div class="table-scroll"><table class="record"><tr><th>${tr("ui.mission")}</th><th>${tr("ui.progress")}</th><th>${tr("ui.appliedToOtherInputs")}</th><th>${tr("ui.runsChecks")}</th><th>${tr("ui.lastHint")}</th><th>${tr("ui.errorTypes")}</th><th>${tr("ui.finalExplanation")}</th></tr>${rows}</table></div>
       <div class="bench-actions">
-        <button class="btn primary" data-action="export">진도 내보내기 (.json)</button>
-        <label class="btn">진도 불러오기<input type="file" id="importFile" accept="application/json,.json" class="sr"></label>
-        <button class="btn" data-action="summary">튜터용 요약 (.txt)</button>
-        <button class="btn ghost danger" data-action="reset-all">기록 전체 지우기</button>
+        <button class="btn primary" data-action="export">${tr("ui.exportProgressJson")}</button>
+        <label class="btn">${tr("ui.importProgress")}<input type="file" id="importFile" accept="application/json,.json" class="sr"></label>
+        <button class="btn" data-action="summary">${tr("ui.tutorSummaryTxt")}</button>
+        <button class="btn ghost danger" data-action="reset-all">${tr("ui.deleteAllRecords")}</button>
       </div>
       <p id="recordMsg" class="muted small" role="status"></p>
-      <details class="credits"><summary>그래픽·소리 출처</summary>
-        <p>캐릭터·타일·건물·아이콘·글꼴은 모두 이 프로젝트 코드(src/pixel.js)로 직접 그린 픽셀 아트이며 외부 이미지 파일을 쓰지 않습니다. 색은 Sweetie 16 팔레트(GrafxKid, lospec.com) 16색을 참고했습니다. 효과음은 브라우저 WebAudio 로 즉석 합성합니다.</p></details>`;
+      <details class="credits"><summary>${tr("ui.graphicsAndSoundCredits")}</summary>
+        <p>${tr("ui.charactersTilesBuildingsIconsAndFonts")}</p></details>`;
     if (!dlg.open) dlg.showModal();
   }
 
   function summaryText() {
-    const lines = ['C++ 코드섬: 로봇 복구대 — 1장 학습 요약', `기록 시각: ${progress.updatedAt || '기록 없음'}`, ''];
+    const lines = [(tr("ui.cCodeIslandRobotRecoveryTeam")), `${tr("ui.recordedAt")}${progress.updatedAt || (tr("ui.noRecord"))}`, ''];
     for (const m of MISSIONS) {
       const r = rec(m);
       lines.push(`[${m.id} ${m.title}]`);
-      lines.push(`  진행: ${{ none: '미시도', trying: '시도 중', done: '미션 완료' }[r.status]} / 다른 입력 적용: ${r.applied ? '확인' : '미확인'}`);
-      lines.push(`  실행·확인 횟수: ${r.attempts} / 마지막 힌트: ${r.hintLevel ? `${r.hintLevel}단계(${HINT_STEPS[r.hintLevel - 1]})` : '보지 않음'}`);
-      const errs = Object.entries(r.errors).map(([k, v]) => `${ERROR_TYPES[k]} ${v}회`).join(', ');
-      lines.push(`  오류 유형: ${errs || '없음'}`);
-      for (const p of r.predictions) lines.push(`  예상: ${p.q} → 예상 ${p.answer}, 실제 ${p.actual} (${p.correct ? '일치' : '불일치'})`);
-      lines.push(`  마무리 설명: ${r.reflection || '(없음)'}`);
+      lines.push(`${tr("ui.progress2")}${{ none: (tr("ui.notAttempted")), trying: (tr("ui.inProgress")), done: (tr("ui.missionComplete2")) }[r.status]}${tr("ui.appliedToOtherInputs2")}${r.applied ? (tr("ui.confirmed")) : (tr("ui.notConfirmed"))}`);
+      lines.push(`${tr("ui.runsChecks2")}${r.attempts}${tr("ui.lastHint2")}${r.hintLevel ? tr('format.hintLevelSummary', { number: r.hintLevel, name: HINT_STEPS[r.hintLevel - 1] }) : (tr("ui.notViewed2"))}`);
+      const errs = Object.entries(r.errors).map(([k, v]) => `${ERROR_TYPES[k]} ${v}${tr("ui.times")}`).join(', ');
+      lines.push(`${tr("ui.errorTypes2")}${errs || (tr("ui.none2"))}`);
+      for (const p of r.predictions) lines.push(`${tr("ui.question2")}${p.q}${tr("ui.predicted")}${p.answer}${tr("ui.actual")}${p.actual} (${p.correct ? (tr("ui.match2")) : (tr("ui.mismatch"))})`);
+      lines.push(`${tr("ui.finalExplanation2")}${r.reflection || (tr("ui.none"))}`);
       lines.push('');
     }
-    lines.push('미션 완료와 다른 입력 적용 확인은 따로 기록합니다. 한 번의 플레이로 숙련을 판단하지 말고 다음 학습 때 짧게 다시 확인하세요.');
+    lines.push((tr("ui.missionCompletionAndApplicationToOther")));
     return lines.join('\n');
   }
 
@@ -1430,10 +1466,10 @@
       case 'to-task': invalidateRun(w); w.phase = 'task'; saveWork(); render(); break;
       case 'edit': stopPlay(); w.editing = true; render(); break;
       case 'reset-code':
-        if (window.confirm('작성한 코드를 지우고 처음 코드로 되돌릴까요?')) { invalidateRun(w); w.code = m.starter; w.editing = true; saveWork(); render(); }
+        if (window.confirm((tr("ui.discardYourCodeAndRestoreThe")))) { invalidateRun(w); w.code = m.starter; w.editing = true; saveWork(); render(); }
         break;
       case 'restart':
-        if (window.confirm(`${m.id} 미션의 작업을 처음 상태로 돌립니다. 진도 기록은 유지됩니다.`)) {
+        if (window.confirm(`${m.id}${tr("ui.missionWorkWillBeResetYour")}`)) {
           stopPlay();
           work[m.id] = freshWork(m);
           saveWork();
@@ -1453,13 +1489,40 @@
       case 'close-drawer': ui.drawer = null; ui.drawerMission = null; renderDrawer(); break;
       case 'toggle-sound': settings.sound = !settings.sound; writeStore(SETTINGS_KEY, settings); applySettings(); renderTools(); Sfx.play('change'); break;
       case 'toggle-motion': settings.motion = reduceMotion() ? 'normal' : 'reduce'; writeStore(SETTINGS_KEY, settings); applySettings(); render(); break;
+      case 'toggle-language': {
+        const oldMissions = MISSIONS;
+        const lang = I18N.lang === 'ko' ? 'en' : 'ko';
+        stopPlay();
+        loadLanguage(lang);
+        for (const old of oldMissions) {
+          const current = MISSIONS.find((item) => item.id === old.id);
+          const state = work[old.id];
+          if (old.kind === 'editor' && state.code === old.starter) state.code = current.starter;
+          invalidateRun(state);
+          if (old.kind === 'order') { state.orderResult = null; state.lastCheck = null; }
+          if (old.kind === 'editor') state.editing = true;
+          if (state.phase === 'predict' && state.predict.submitted) {
+            state.predict.submitted = false;
+            state.predict.actual = null;
+            state.predict.revealed = false;
+          }
+        }
+        ui.resultUnseen = false;
+        settings.lang = lang;
+        writeStore(SETTINGS_KEY, settings);
+        saveWork();
+        render();
+        if ($('#mapDialog').open) openMap();
+        if ($('#recordDialog').open) openRecord();
+        break;
+      }
       case 'open-map': openMap(); break;
       case 'open-record': openRecord(); break;
       case 'close-dialog': t.closest('dialog').close(); break;
       case 'export': download(`cpp-code-island-progress-${today()}.json`, JSON.stringify(progress, null, 2), 'application/json'); break;
       case 'summary': download(`cpp-code-island-summary-${today()}.txt`, summaryText(), 'text/plain'); break;
       case 'reset-all':
-        if (window.confirm('모든 미션의 진도 기록과 작업을 지웁니다. 먼저 내보내기를 했는지 확인하세요. 지울까요?')) {
+        if (window.confirm((tr("ui.deleteProgressAndWorkForEvery")))) {
           stopPlay();
           progress = emptyProgress();
           for (const x of MISSIONS) work[x.id] = freshWork(x);
@@ -1482,11 +1545,11 @@
           progress = normalizeProgress(JSON.parse(reader.result));
           saveProgress();
           openRecord();
-          $('#recordMsg').textContent = '진도를 불러왔습니다.';
+          $('#recordMsg').textContent = (tr("ui.progressImported"));
           render();
         } catch (e) {
           const msg = $('#recordMsg');
-          if (msg) msg.textContent = `불러오지 못했습니다: ${e.message}`;
+          if (msg) msg.textContent = `${tr("ui.importFailed")}${e.message}`;
         }
       };
       reader.readAsText(t.files[0]);

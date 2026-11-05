@@ -82,3 +82,67 @@ test('starter hints point at the lines that actually fail', () => {
   assert.match(lines[8], /energy = energy - usage\s/);
   assert.equal(Sim.run(m.starter).error.line, 8);
 });
+
+test('localized mission code differs only in comments, with the same line numbers', () => {
+  const ko = M.getMissions('ko');
+  const en = M.getMissions('en');
+  assert.equal(ko, M.MISSIONS);
+  assert.equal(en, M.getMissions('en'));
+  const compare = (left, right) => {
+    const a = left.split('\n');
+    const b = right.split('\n');
+    assert.equal(a.length, b.length);
+    assert.deepEqual(a.map((line) => line.replace(/\/\/.*$/, '')), b.map((line) => line.replace(/\/\/.*$/, '')));
+  };
+  ko.forEach((mission, i) => {
+    for (const key of ['starter', 'reference']) {
+      if (mission[key] !== undefined) compare(mission[key], en[i][key]);
+    }
+    (mission.variants || []).forEach((variant, j) => compare(variant.template, en[i].variants[j].template));
+  });
+});
+
+test('English mission data contains no Korean text', () => {
+  const walk = (value, path = 'missions') => {
+    if (typeof value === 'string') assert.doesNotMatch(value, /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/, path);
+    else if (value && typeof value === 'object') {
+      for (const [key, child] of Object.entries(value)) walk(child, `${path}.${key}`);
+    }
+  };
+  walk(M.getMissions('en'));
+});
+
+test('English base reference passes all inputs and marks exactly lines 8 and 9', () => {
+  const mission = M.getMissions('en').find((m) => m.id === '1-4');
+  const marked = mission.starter.split('\n').flatMap((line, i) => line.includes(mission.fixMark) ? [i + 1] : []);
+  assert.deepEqual(marked, [8, 9]);
+  for (const t of mission.tests) assert.equal(M.checkBase(t, Sim.run(mission.reference, { input: t.input, lang: 'en' })).pass, true, t.label);
+});
+
+test('simulator error classification uses stable codes rather than message text', () => {
+  const groups = {
+    name: ['linkNoMain', 'caseMismatch', 'undeclared', 'undeclaredVar', 'cinUndeclared', 'unknownIoName', 'notInStd'],
+    namespace: ['nameNeedsStd', 'endlNeedsStd'],
+    semicolon: ['missingSemicolon', 'colonInsteadOfSemicolon', 'semicolonBefore'],
+    direction: ['wrongArrowCout', 'wrongArrowCin', 'singleArrow', 'streamNeedsArrow', 'streamParen'],
+    input: ['inputMissing', 'inputBad'],
+    uninit: ['uninitRead', 'uninitCompound'],
+  };
+  for (const [type, codes] of Object.entries(groups)) {
+    for (const code of codes) assert.equal(M.classifySimError({ code, message: 'unrelated', kind: 'compile' }), type, code);
+  }
+  assert.equal(M.classifySimError({ code: 'other', kind: 'link', message: "';'" }), 'syntax');
+});
+
+test('checker messages follow the selected language', () => {
+  try {
+    M.setLang('en');
+    assert.match(M.checkOrder([]).message, /empty/);
+    const mission = M.getMissions('en')[1];
+    assert.match(M.checkSignal(mission.variants[0], { ok: true, output: 'READY' }).message, /screen/);
+    M.setLang('ko');
+    assert.match(M.checkOrder([]).message, /빈 칸/);
+  } finally {
+    M.setLang('ko');
+  }
+});

@@ -198,7 +198,7 @@
     if (!S.declared(name)) return null;
     const v = S.vars.find((z) => z.name === name);
     const st = S.status([name]);
-    const badge = st === 'change' ? '<em class="b-change">변경</em>' : st === 'read' ? '<em class="b-read">읽음</em>' : '';
+    const badge = st === 'change' ? `<em class="b-change">${esc(global.I18N.t('scene.changed'))}</em>` : st === 'read' ? `<em class="b-read">${esc(global.I18N.t('scene.read'))}</em>` : '';
     return { x, y, anchor, cls: `var ${st ? `is-${st}` : ''}`, html: `<code>${esc(name)}</code> <b>${esc(fmt(v.value, v.type))}</b>${badge}` };
   }
 
@@ -215,15 +215,15 @@
     const shown = lines.slice(-(o.lines || 2));
     const isOut = S.step && S.step.kind === 'cout';
     let body;
-    if (m.phase === 'compileError') body = `<span class="scr-err">${m.buildFail === 'link' ? '링크 실패' : '컴파일 실패'}</span><span class="scr-dim">실행 파일 없음</span>`;
-    else if (!S.step && m.phase === 'edit') body = `<span class="scr-dim">${esc(o.idle || '대기 중')}</span>`;
-    else body = shown.map((l) => `<span>${esc(l) || '&nbsp;'}</span>`).join('') || '<span class="scr-dim">(출력 없음)</span>';
+    if (m.phase === 'compileError') body = `<span class="scr-err">${esc(global.I18N.t(m.buildFail === 'link' ? 'scene.linkFailed' : 'scene.compileFailed'))}</span><span class="scr-dim">${esc(global.I18N.t('scene.noExecutable'))}</span>`;
+    else if (!S.step && m.phase === 'edit') body = `<span class="scr-dim">${esc(o.idle || global.I18N.t('scene.waiting'))}</span>`;
+    else body = shown.map((l) => `<span>${esc(l) || '&nbsp;'}</span>`).join('') || `<span class="scr-dim">${esc(global.I18N.t('scene.noOutput'))}</span>`;
     return { x, y, w, h, anchor: 'box', cls: `screen ${isOut ? 'is-output' : ''} ${o.big ? 'big' : ''}`, html: body };
   }
 
   function outputBadge(S, x, y) {
     if (!S.step || S.step.kind !== 'cout') return null;
-    return { x, y, anchor: 'bottom', cls: 'var is-output', html: '<em class="b-output">출력만</em> 변수는 그대로' };
+    return { x, y, anchor: 'bottom', cls: 'var is-output', html: `<em class="b-output">${esc(global.I18N.t('scene.outputOnly'))}</em> ${esc(global.I18N.t('scene.variablesUnchanged'))}` };
   }
 
   // ================================================================ 1-3 전력 분배 (대표 장면)
@@ -306,23 +306,22 @@
       const m = S.model;
       const share = S.value('share');
       const midX = R13.robotX0 + (L.robots.length * R13.robotDX) / 2;
-      const distLabel = { broken: '고장', working: '작동 중', restored: '복구됨' };
       let dist = 'broken';
       if (m.phase === 'running') dist = 'working';
       else if (m.phase === 'pass' || (m.phase === 'edit' && m.restored)) dist = 'restored';
       const out = [
-        label(30, 62, '발전기', 'top'),
+        label(30, 62, global.I18N.t('scene.generator'), 'top'),
         varTag(S, 'total', 30, 39, 'bottom'),
-        label(62, 60, `배분 장치 · ${distLabel[dist]}`, 'top', `st-${dist}`),
-        varTag(S, 'share', midX, 31, 'bottom') || label(midX, 31, '배터리 = share', 'bottom', 'dim'),
-        varTag(S, 'robots', midX, 69, 'top') || label(midX, 69, `로봇 ${L.n}대`, 'top', 'dim'),
-        screenTag(S, R13.mon[0] + 2, R13.mon[1] + 2, R13.mon[2] - 4, R13.mon[3] - 5, { idle: 'cout 출력 화면' }),
+        label(62, 60, global.I18N.t('scene.distributorStatus', { status: facilityText(dist) }), 'top', `st-${dist}`),
+        varTag(S, 'share', midX, 31, 'bottom') || label(midX, 31, global.I18N.t('scene.batteryShare'), 'bottom', 'dim'),
+        varTag(S, 'robots', midX, 69, 'top') || label(midX, 69, global.I18N.t('scene.robotCount', { count: L.n }), 'top', 'dim'),
+        screenTag(S, R13.mon[0] + 2, R13.mon[1] + 2, R13.mon[2] - 4, R13.mon[3] - 5, { idle: global.I18N.t('scene.coutScreen') }),
         outputBadge(S, R13.mon[0] + R13.mon[2] / 2, R13.mon[1] - 1),
       ];
       if (share !== undefined && S.rawP >= 1) {
         const lost = L.total - share * L.n;
-        if (lost > 1e-9) out.push({ x: 62, y: 68, anchor: 'top', cls: 'var is-warn', html: `<em class="b-warn">손실</em> 나눠 주지 못한 전력 <b>${esc(fmt(lost, 'double'))}</b>` });
-        else if (lost < -1e-9) out.push({ x: 62, y: 68, anchor: 'top', cls: 'var is-warn', html: `<em class="b-warn">초과</em> 발전기에 없는 전력 <b>${esc(fmt(-lost, 'double'))}</b>` });
+        if (lost > 1e-9) out.push({ x: 62, y: 68, anchor: 'top', cls: 'var is-warn', html: `<em class="b-warn">${esc(global.I18N.t('scene.loss'))}</em> ${esc(global.I18N.t('scene.undistributedPower'))} <b>${esc(fmt(lost, 'double'))}</b>` });
+        else if (lost < -1e-9) out.push({ x: 62, y: 68, anchor: 'top', cls: 'var is-warn', html: `<em class="b-warn">${esc(global.I18N.t('scene.excess'))}</em> ${esc(global.I18N.t('scene.powerNotInGenerator'))} <b>${esc(fmt(-lost, 'double'))}</b>` });
       }
       return out;
     },
@@ -334,7 +333,7 @@
     if (m.phase === 'running') return 'working';
     return 'broken';
   }
-  const FACILITY_TEXT = { broken: '고장', working: '작동 중', restored: '복구됨' };
+  const facilityText = (state) => global.I18N.t({ broken: 'scene.broken', working: 'scene.working', restored: 'scene.restored' }[state]);
   const item = (ctx, name, x, y) => Px.drawRows(ctx, Px.ITEMS[name], Math.round(x), Math.round(y));
 
   // ================================================================ 1-1 빌드 공장
@@ -417,7 +416,7 @@
         const w = i === 6 ? 32 : 16;
         const below = i >= 4;
         const ty = below ? y + (i === 6 ? 25 : 17) : y - 1;
-        if (i === T.failAt) return label(x + w / 2, ty, `${c.label} · 흐름 끊김`, below ? 'top' : 'bottom', 'st-fail');
+        if (i === T.failAt) return label(x + w / 2, ty, global.I18N.t('scene.flowInterrupted', { label: c.label }), below ? 'top' : 'bottom', 'st-fail');
         if (litSet.has(i)) return label(x + w / 2, ty, c.label, below ? 'top' : 'bottom', 'st-ok');
         return label(x + w / 2, ty, '?', below ? 'top' : 'bottom', 'dim');
       });
@@ -460,13 +459,13 @@
       const m = S.model;
       const fac = facilityState(m);
       const [x, y, w, h] = R12.mon;
-      const idle = fac === 'restored' ? `복구됨 · 마지막 신호 ${m.target}` : '꺼져 있음';
+      const idle = fac === 'restored' ? global.I18N.t('scene.lastSignal', { target: m.target }) : global.I18N.t('scene.turnedOff');
       return [
-        label(x + w / 2, y - 1, `목표 신호: ${m.target}`, 'bottom'),
+        label(x + w / 2, y - 1, global.I18N.t('scene.targetSignal', { target: m.target }), 'bottom'),
         screenTag(S, x + 3, y + 3, w - 6, h - 7, { idle, lines: 3, big: true }),
-        label(x + w / 2, y + h + 3, `관제 화면 · ${FACILITY_TEXT[fac]}`, 'top', `st-${fac}`),
+        label(x + w / 2, y + h + 3, global.I18N.t('scene.controlScreenStatus', { status: facilityText(fac) }), 'top', `st-${fac}`),
         outputBadge(S, R12.robot[0] + 8, R12.robot[1] - 2),
-        label(R12.mast[0] + 4, R12.mast[1] + 50, '안테나', 'top', 'dim'),
+        label(R12.mast[0] + 4, R12.mast[1] + 50, global.I18N.t('scene.antenna'), 'top', 'dim'),
       ];
     },
   };
@@ -530,14 +529,14 @@
       else if (this.powered(S)) base = 'working';
       const e = S.value('energy');
       const out = [
-        varTag(S, 'energy', bx + bw / 2, by - 3, 'bottom') || label(bx + bw / 2, by - 3, '배터리 = energy', 'bottom', 'dim'),
-        varTag(S, 'usage', R14.base[0] + 16, R14.base[1] - 9, 'bottom') || label(R14.base[0] + 16, R14.base[1] - 9, '가동 전력 = usage', 'bottom', 'dim'),
-        label(R14.base[0] + 16, R14.base[1] + 26, `기지 · ${FACILITY_TEXT[base]}`, 'top', `st-${base}`),
-        label(R14.kb[0] + 8, R14.kb[1] + 9, `입력 단말 ${m.input ? `(${m.input})` : ''}`, 'top', 'dim'),
-        screenTag(S, R14.mon[0] + 2, R14.mon[1] + 2, R14.mon[2] - 4, R14.mon[3] - 5, { idle: 'cout 출력 화면' }),
+        varTag(S, 'energy', bx + bw / 2, by - 3, 'bottom') || label(bx + bw / 2, by - 3, global.I18N.t('scene.batteryEnergy'), 'bottom', 'dim'),
+        varTag(S, 'usage', R14.base[0] + 16, R14.base[1] - 9, 'bottom') || label(R14.base[0] + 16, R14.base[1] - 9, global.I18N.t('scene.operatingPowerUsage'), 'bottom', 'dim'),
+        label(R14.base[0] + 16, R14.base[1] + 26, global.I18N.t('scene.baseStatus', { status: facilityText(base) }), 'top', `st-${base}`),
+        label(R14.kb[0] + 8, R14.kb[1] + 9, global.I18N.t('scene.inputTerminal', { input: m.input ? `(${m.input})` : '' }), 'top', 'dim'),
+        screenTag(S, R14.mon[0] + 2, R14.mon[1] + 2, R14.mon[2] - 4, R14.mon[3] - 5, { idle: global.I18N.t('scene.coutScreen') }),
         outputBadge(S, R14.mon[0] + R14.mon[2] / 2, R14.mon[1] - 1),
       ];
-      if (e !== undefined && e < 0) out.push({ x: R14.base[0] + 16, y: R14.base[1] + 34, anchor: 'top', cls: 'var is-warn', html: '<em class="b-warn">부족</em> 전력이 모자랍니다' });
+      if (e !== undefined && e < 0) out.push({ x: R14.base[0] + 16, y: R14.base[1] + 34, anchor: 'top', cls: 'var is-warn', html: `<em class="b-warn">${esc(global.I18N.t('scene.shortage'))}</em> ${esc(global.I18N.t('scene.notEnoughPower'))}` });
       return out;
     },
   };

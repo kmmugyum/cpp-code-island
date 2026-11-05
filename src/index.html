@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <noscript><p class="noscript">이 게임은 자바스크립트로 동작합니다. 미리보기 화면이라면 파일을 내려받아 브라우저(Chrome, Edge, Safari, Firefox)에서 직접 여세요.</p></noscript>
+  <noscript><p class="noscript">이 게임은 자바스크립트로 동작합니다. 미리보기 화면이라면 파일을 내려받아 브라우저(Chrome, Edge, Safari, Firefox)에서 직접 여세요.<br>This game needs JavaScript. If you are in a preview, download the file and open it in a browser (Chrome, Edge, Safari, Firefox).</p></noscript>
   <a class="skip" href="#workbench">코드 작업대로 건너뛰기</a>
   <header class="topbar">
     <div class="brand"><img id="logo" class="px-text" alt="CODE ISLAND" height="15"><span class="brand-ko">C++ 코드섬 <small>로봇 복구대</small></span></div>
@@ -21,6 +21,7 @@
       <button class="btn tool-btn" data-action="open-record"></button>
       <button class="btn tool-btn" data-action="toggle-sound" aria-pressed="false"></button>
       <button class="btn tool-btn" data-action="toggle-motion" aria-pressed="false"></button>
+      <button class="btn tool-btn" data-action="toggle-language"></button>
       <span id="saveState" role="status"></span>
     </div>
   </header>
@@ -50,6 +51,7 @@
   <script src="missions.js"></script>
   <script src="pixel.js"></script>
   <script src="sfx.js"></script>
+  <script src="i18n.js"></script>
   <script src="scene.js"></script>
   <script src="app.js"></script>
 </body>

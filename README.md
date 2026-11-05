@@ -1,8 +1,10 @@
+<p align="right"><b>한국어</b> | <a href="./README.en.md">English</a></p>
+
 # C++ 코드섬: 로봇 복구대
 
 C++를 처음 배우는 사람이 코드를 한 줄씩 실행하며 로봇과 시설이 어떻게 반응하는지 보고 문법과 사용 상황을 익히는 픽셀 아트 퍼즐 게임입니다. MIT OpenCourseWare [6.096 Introduction to C++](https://ocw.mit.edu/courses/6-096-introduction-to-c-january-iap-2011/)의 강의 순서를 따릅니다.
 
-**[바로 플레이하기](https://kmmugyum.github.io/cpp-code-island/)** (설치 없이 브라우저에서 실행)
+**[바로 플레이하기](https://kmmugyum.github.io/cpp-code-island/?lang=ko)** (설치 없이 브라우저에서 실행)
 
 ![데스크톱 화면: 1-3 전력 분배 미션 실행 중](./images/screenshot-desktop.png)
 
@@ -39,7 +41,7 @@ C++를 처음 배우는 사람이 코드를 한 줄씩 실행하며 로봇과 �
 | 빈칸 채우기 | 코드의 ▢ 칸을 누르고 아래 코드 카드 선택 | `Tab`으로 이동, `Enter`로 선택 |
 | 코드 편집 후 실행 (1-4) | 실행 버튼 | `Ctrl`/`⌘` + `Enter` |
 
-드래그가 필요한 조작은 없습니다. 휴대폰에서는 [장면 / 코드 / 결과] 탭으로 화면을 나눠 봅니다. 효과음은 기본으로 꺼져 있고, 움직임 줄이기는 OS 설정과 상단 버튼을 함께 따릅니다.
+드래그가 필요한 조작은 없습니다. 휴대폰에서는 [장면 / 코드 / 결과] 탭으로 화면을 나눠 봅니다. 효과음은 기본으로 꺼져 있고, 움직임 줄이기는 OS 설정과 상단 버튼을 함께 따릅니다. 한국어와 영어는 상단의 언어 버튼이나 주소 뒤의 `?lang=ko`, `?lang=en`으로 바꿉니다.
 
 <p align="center"><img src="./images/screenshot-mobile.png" width="300" alt="모바일 화면: 장면 탭"></p>
 
@@ -68,6 +70,7 @@ npm run build     # dist/cpp-code-island.html 하나로 묶기
 src/
   cppsim.js     1장 범위 C++ 시뮬레이터 (토큰화, 파싱, 단계별 실행 기록)
   missions.js   미션 데이터와 채점 (DOM 없음, Node 테스트에서 사용)
+  i18n.js       한국어/영어 화면 문구
   pixel.js      팔레트, 스프라이트, 3x5 픽셀 글꼴, 아이콘
   scene.js      정수 배율 캔버스 장면 엔진과 미션별 장면
   sfx.js        WebAudio 효과음

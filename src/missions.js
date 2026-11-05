@@ -38,16 +38,16 @@
 
   // 시뮬레이터 오류 → 튜터가 볼 오류 유형
   function classifySimError(error) {
-    const m = error.message;
-    if (error.kind === 'link' || /대소문자|선언되지 않|찾을 수 없습니다|이름이 없습니다/.test(m)) {
-      if (/using namespace std|std::/.test(m) && !/main/.test(m)) return 'namespace';
-      return 'name';
-    }
-    if (/';'/.test(m)) return 'semicolon';
-    if (/'<<'|'>>'/.test(m)) return 'direction';
-    if (error.kind === 'input') return 'input';
-    if (error.kind === 'ub' && /값을 넣기 전/.test(m)) return 'uninit';
-    return 'syntax';
+    const types = {
+      linkNoMain: 'name', caseMismatch: 'name', undeclared: 'name', undeclaredVar: 'name',
+      cinUndeclared: 'name', unknownIoName: 'name', notInStd: 'name',
+      nameNeedsStd: 'namespace', endlNeedsStd: 'namespace',
+      missingSemicolon: 'semicolon', colonInsteadOfSemicolon: 'semicolon', semicolonBefore: 'semicolon',
+      wrongArrowCout: 'direction', wrongArrowCin: 'direction', singleArrow: 'direction',
+      streamNeedsArrow: 'direction', streamParen: 'direction',
+      inputMissing: 'input', inputBad: 'input', uninitRead: 'uninit', uninitCompound: 'uninit',
+    };
+    return types[error.code] || 'syntax';
   }
 
   const ERROR_LABEL = {
@@ -131,18 +131,18 @@
     const answer = m11.cards.map((c) => c.id);
     const empty = answer.length - placedIds.filter(Boolean).length;
     if (empty > 0) {
-      return { pass: false, correctPrefix: prefixLength(placedIds, answer), message: `아직 빈 칸이 ${empty}개 있습니다. 카드를 모두 놓은 뒤 확인하세요.` };
+      return { pass: false, correctPrefix: prefixLength(placedIds, answer), message: lang === 'en' ? `${empty} slot(s) are still empty. Place all the cards before checking.` : `아직 빈 칸이 ${empty}개 있습니다. 카드를 모두 놓은 뒤 확인하세요.` };
     }
     const prefix = prefixLength(placedIds, answer);
     if (prefix === answer.length) {
-      return { pass: true, correctPrefix: prefix, message: '배선 완료! 소스 파일이 실행되는 프로그램이 되기까지의 순서를 맞췄습니다.' };
+      return { pass: true, correctPrefix: prefix, message: lang === 'en' ? 'Wiring complete! You put the build steps in order.' : '배선 완료! 소스 파일이 실행되는 프로그램이 되기까지의 순서를 맞췄습니다.' };
     }
-    const wrong = m11.cards.find((c) => c.id === placedIds[prefix]);
+    const wrong = getMissions(lang)[0].cards.find((c) => c.id === placedIds[prefix]);
     return {
       pass: false,
       correctPrefix: prefix,
       wrongIndex: prefix,
-      message: `${prefix + 1}번째 칸의 '${wrong.label}' 부터 흐름이 끊깁니다. ${wrong.why}`,
+      message: lang === 'en' ? `The sequence breaks at slot ${prefix + 1}, '${wrong.label}'. ${wrong.why}` : `${prefix + 1}번째 칸의 '${wrong.label}' 부터 흐름이 끊깁니다. ${wrong.why}`,
     };
   }
 
@@ -241,11 +241,11 @@
     if (!result.ok) return simFailure(result);
     const shown = result.output.trim();
     if (shown === variant.target) {
-      return { pass: true, message: `관제 화면에 ${variant.target} 신호가 떴습니다.` };
+      return { pass: true, message: lang === 'en' ? `The control screen shows ${variant.target}.` : `관제 화면에 ${variant.target} 신호가 떴습니다.` };
     }
     return {
       pass: false, kind: 'logic', errorType: 'syntax',
-      message: `프로그램은 실행됐지만 화면에 ${JSON.stringify(result.output)} 가 나왔습니다. 목표는 ${variant.target} 입니다.`,
+      message: lang === 'en' ? `The program ran, but displayed ${JSON.stringify(result.output)}. The goal is ${variant.target}.` : `프로그램은 실행됐지만 화면에 ${JSON.stringify(result.output)} 가 나왔습니다. 목표는 ${variant.target} 입니다.`,
     };
   }
 
@@ -253,7 +253,7 @@
     const e = result.error;
     return {
       pass: false, kind: e.kind, line: e.line, errorType: classifySimError(e),
-      message: `${e.line}번 줄 — ${e.message}`,
+      message: lang === 'en' ? `Line ${e.line} — ${e.message}` : `${e.line}번 줄 — ${e.message}`,
     };
   }
 
@@ -351,11 +351,11 @@
     const printed = numbersIn(result.output);
     const got = printed.length ? printed[printed.length - 1] : NaN;
     if (Math.abs(got - expected) < 1e-9) {
-      return { pass: true, message: `${test.label}: 각 로봇이 ${Sim.formatDouble(expected)} 씩 받았습니다.` };
+      return { pass: true, message: lang === 'en' ? `${test.label}: each robot received ${Sim.formatDouble(expected)}.` : `${test.label}: 각 로봇이 ${Sim.formatDouble(expected)} 씩 받았습니다.` };
     }
     return {
       pass: false, kind: 'logic',
-      message: `${test.label}: share 가 ${share ? share.shown : '?'}(${share ? share.type : '?'}) 입니다. 목표는 ${Sim.formatDouble(expected)} 입니다.`,
+      message: lang === 'en' ? `${test.label}: share is ${share ? share.shown : '?'} (${share ? share.type : '?'}). The goal is ${Sim.formatDouble(expected)}.` : `${test.label}: share 가 ${share ? share.shown : '?'}(${share ? share.type : '?'}) 입니다. 목표는 ${Sim.formatDouble(expected)} 입니다.`,
       expected, got,
     };
   }
@@ -444,13 +444,13 @@
     const expected = expectedLeft(test);
     const printed = numbersIn(result.output);
     if (!printed.length) {
-      return { pass: false, kind: 'logic', errorType: 'noOutput', message: `${test.label}: 화면에 숫자가 출력되지 않았습니다. 계산한 energy 를 cout 으로 출력했는지 확인하세요.` };
+      return { pass: false, kind: 'logic', errorType: 'noOutput', message: lang === 'en' ? `${test.label}: no number was printed. Check that you output the calculated energy with cout.` : `${test.label}: 화면에 숫자가 출력되지 않았습니다. 계산한 energy 를 cout 으로 출력했는지 확인하세요.` };
     }
     const got = printed[printed.length - 1];
     if (got === expected) {
-      return { pass: true, message: `${test.label}: 남은 전력 ${expected} 이(가) 출력됐습니다.` };
+      return { pass: true, message: lang === 'en' ? `${test.label}: printed ${expected} remaining energy.` : `${test.label}: 남은 전력 ${expected} 이(가) 출력됐습니다.` };
     }
-    return { pass: false, kind: 'logic', message: `${test.label}: 마지막으로 출력한 숫자가 ${got} 입니다. 목표는 ${expected} 입니다.`, expected, got };
+    return { pass: false, kind: 'logic', message: lang === 'en' ? `${test.label}: the last number printed was ${got}. The goal is ${expected}.` : `${test.label}: 마지막으로 출력한 숫자가 ${got} 입니다. 목표는 ${expected} 입니다.`, expected, got };
   }
 
   // 기본 입력은 맞았는데 다른 입력에서 틀리면, 출력이 입력에 따라 바뀌지 않는 것(숫자를 직접 적음)이 흔한 원인
@@ -459,10 +459,171 @@
     return fixed ? 'hardcode' : null;
   }
 
+  m14.fixMark = '수정할 코드';
   const MISSIONS = [m11, m12, m13, m14];
+  let lang = 'ko';
+  function setLang(value) { lang = value === 'en' ? 'en' : 'ko'; }
 
+  // Clone the data while retaining the prediction functions.
+  function clone(value) {
+    if (Array.isArray(value)) return value.map(clone);
+    if (value && typeof value === 'object') {
+      const copy = {};
+      for (const key of Object.keys(value)) copy[key] = clone(value[key]);
+      return copy;
+    }
+    return value;
+  }
+  function translateTools(tools, rows) {
+    const keys = ['name', 'target', 'input', 'result', 'change', 'when'];
+    tools.forEach((tool, i) => keys.forEach((key, j) => { tool[key] = rows[i][j]; }));
+  }
+  function englishMissions() {
+    const missions = clone(MISSIONS);
+    const [a, b, c, d] = missions;
+    Object.assign(a, {
+      title: 'Startup Sequence', zone: 'Wiring Factory',
+      sceneIdle: 'The build machines are off. Put the cards in order to guide the robot and its source file through them.',
+      goal: 'Connect the base wiring by ordering the steps that turn source code into a running program.',
+      done: 'Place all seven cards in order to complete the mission, then answer two questions to apply what you learned.',
+      reuse: 'If a code change has no effect, check whether you rebuilt it by compiling and linking again.',
+    });
+    a.reward.name = 'Build Key';
+    const cards = [
+      ['Source file', 'base.cpp — text people read and edit', 'The source file is the starting point written by a person. All later steps use it.'],
+      ['Preprocessor', 'Handles # commands such as #include first', 'The preprocessor handles #include and passes the result to the compiler.'],
+      ['Compiler', 'Translates code into machine-code pieces', 'The compiler translates preprocessed code, after preprocessing and before the object file.'],
+      ['Object file', 'An incomplete piece with missing parts marked', 'The compiler produces an object file. It still needs other pieces before it can run.'],
+      ['Linker', 'Joins pieces and libraries', 'The linker combines object files and libraries to fill in missing parts.'],
+      ['Executable', 'The finished program', 'The linker produces the executable, ready for the operating system to run.'],
+      ['Operating system runs it', 'Loads the program into memory and runs it', 'The operating system runs the finished executable. This is the final step.'],
+    ];
+    a.cards.forEach((card, i) => [card.label, card.sub, card.why] = cards[i]);
+    a.quiz[0].q = 'You changed an output statement in base.cpp. How do you make the change appear?';
+    a.quiz[1].q = 'Compilation succeeded, but the executable was not created because main could not be found. Which step failed?';
+    const quiz = [
+      [['Run the existing executable again', 'It was built from the old source, so it does not contain the change.'], ['Compile and link again, then run the new executable', 'When source changes, rebuild the executable from that source.'], ['Open the object file in a text editor and change it', 'An object file contains translated machine code. Edit the source file instead.']],
+      [['Preprocessor', 'The preprocessor handles # commands. Compilation has already passed it.'], ['Linker', 'The linker looks for the program entry point, main. Without it, it cannot create the executable.'], ['Operating system', 'No executable was created, so the operating system has nothing to run.']],
+    ];
+    a.quiz.forEach((q, i) => q.options.forEach((option, j) => [option.t, option.why] = quiz[i][j]));
+    a.hints = [
+      'Read what each card takes in and produces. Each result becomes input for the next step.',
+      'The compiler produces an object file; the linker combines object files and libraries into an executable. C++ also preprocesses before compiling.',
+      'Start with the source file and end with the operating system running it. The preprocessor comes before the compiler.',
+      'Source file → preprocessor → compiler → object file → linker (+ libraries) → executable → operating system. The build finishes before execution (lecture p.2).',
+    ];
+    translateTools(a.tools, [
+      ['Source file (.cpp)', 'Person', 'C++ code you write', 'Starting point for the build', 'Changes require a rebuild', 'Edit this to change program behavior'],
+      ['Compiler', 'Preprocessed code', 'One source file', 'Object file', 'Syntax mistakes cause compile errors here', 'Translating code into machine code'],
+      ['Linker', 'Object files + libraries', 'Incomplete pieces', 'Executable', 'Missing main causes a link error', 'Combining pieces into a program'],
+    ]);
+    Object.assign(b, {
+      title: 'Send a Signal', zone: 'Control Tower',
+      sceneIdle: 'The control screen is off. An executable must be built before cout can display output.',
+      goal: 'Fill in the blanks to display READY on the control screen.',
+      done: 'Display READY to complete the mission, then send GO to apply what you learned.',
+      reuse: 'To display something, use cout << inside main and end each statement with a semicolon.',
+    });
+    b.reward.name = 'Signal Beacon';
+    b.variants[0].label = 'Basic: READY';
+    b.variants[1].label = 'Apply: GO';
+    b.variants[0].blanks.end[2].label = '(empty)';
+    b.variants[1].blanks.ns[1].label = '(empty)';
+    b.hints = [
+      'First check the error type (compile or link) and line number in the result. A blank on that line is the cause.',
+      'A program starts in a function named exactly main (names are case-sensitive). Use cout << for output and end statements with ;. Without std::, use using namespace std;.',
+      'The first blank is main. The output arrow << points toward cout (the screen).',
+      'Basic: int main() { std::cout << "READY\\n"; return 0; }  Apply: add using namespace std; and use cout << "GO\\n";',
+    ];
+    translateTools(b.tools, [
+      ['int main() { … }', 'Program', 'None', 'Program entry point', 'Statements inside run from top to bottom', 'Every C++ program needs one'],
+      ['std::cout << value', 'Screen (standard output)', 'Value to print', 'Text appears on screen', 'Variables do not change', 'Showing a result to a person'],
+      ['using namespace std;', 'Compiler', 'None', 'Use cout, cin and endl without std::', 'No runtime values change', 'Avoiding repeated std:: prefixes'],
+      ['"…\\n"', 'String', '\\n (escape sequence)', 'One newline character', 'None', 'Starting a new line after output'],
+    ]);
+    Object.assign(c, {
+      title: 'Share the Power', zone: 'Power Plant',
+      sceneIdle: 'The distributor is broken. Running the code puts power into the robot battery (share); generator power (total) and robot count (robots) are only read.',
+      goal: 'Divide generator power total equally among robots and calculate each robot’s share.',
+      done: 'Get share = 2.5 for generator 5 and 2 robots, then check other values to apply what you learned.',
+      reuse: 'For a fractional result from integers, make one operand double before dividing and store the result in a double.',
+    });
+    c.reward.name = 'Distribution Gear';
+    c.predict.intro = 'Before fixing the distributor, predict how it calculates.';
+    c.predict.questions[0].label = 'Output of 5 / 2';
+    c.predict.questions[1].label = 'Output of 5 / 2.0';
+    const cv = c.variants[0];
+    cv.label = 'Power distributor';
+    cv.template = cv.template.replace('// 발전기 출력', '// generator output').replace('// 로봇 수', '// robot count');
+    cv.blanks.type[0].why = 'If share is int, storing 2.5 discards the fractional part.';
+    cv.blanks.expr[0].why = 'int / int uses integer division, which discards the fractional part during division.';
+    cv.blanks.expr[1].why = '2.0 is a fixed number, not the robot count. This only works for two robots.';
+    cv.blanks.expr[2].why = 'The expression is evaluated left to right. Integer division happens before multiplication by 1.0.';
+    cv.tests.forEach((test) => { test.label = `Generator ${test.params.total} · robots ${test.params.robots}`; });
+    c.hints = [
+      'Check the type and value of share in the variable table. Generator 5 and 2 robots should give 2.5.',
+      'Integer / integer discards the fractional part. If either operand is double, division is floating-point. Evaluate left to right.',
+      'The type of share must be double. Multiply by 1.0 before dividing to make an operand double.',
+      'double share = 1.0 * total / robots;  (total * 1.0 / robots also works.) total / 2.0 fails for 4 robots; total / robots * 1.0 multiplies after integer division.',
+    ];
+    translateTools(c.tools, [
+      ['int', 'Integer variable', 'Integer value', 'Stores a whole number', 'Discard the fractional part when storing a double', 'Counts and other whole-number values'],
+      ['double', 'Floating-point variable', 'Floating-point value', 'Stores a value with a fractional part', 'None', 'Quotients and ratios needing fractions'],
+      ['a / b', 'Two values', 'a, b', 'Integer quotient if both are int; floating-point if either is double', 'Variables do not change unless assigned with =', 'Division: consider the result type first'],
+    ]);
+    Object.assign(d, {
+      title: 'Power Up the Base', zone: 'Main Base',
+      sceneIdle: 'The base is off. cin must read the terminal value into the battery (energy), then subtract base usage before the lights come on.',
+      goal: 'Read power with cin, subtract 35 for base usage, and print the remainder with cout. Fix the errors too.',
+      done: 'Print 65 for input 100 to complete the mission, then check other inputs to apply what you learned.',
+      reuse: 'Read values that change each run into a variable with cin >>, then show the calculated value with cout <<.',
+      fixMark: 'fix this line',
+    });
+    d.reward.name = 'Power Cell';
+    d.predict.intro = 'Before fixing the code, predict the target value.';
+    d.predict.questions[0].label = 'If the base uses 35 power, how much remains when the input is 100?';
+    const comments = (source) => source.replace(/기지 가동에 드는 전력/g, 'power used by the base')
+      .replace(/게이지에 연결된 변수/g, 'variable connected to the gauge')
+      .replace(/수정할 코드/g, 'fix this line')
+      .replace(/여기에 남은 전력 energy 를 출력하는 문장을 쓰세요/g, 'print the remaining energy here');
+    d.starter = comments(d.starter);
+    d.reference = comments(d.reference);
+    d.tests.forEach((test) => { test.label = `Input ${test.input}`; });
+    d.hints = [
+      'First fix the error at the reported line. Once errors are gone, check whether a number appears in the output.',
+      'cin >> variable sends input into a variable; cout << value sends a value to the screen. Arrows show data flow (lecture p.8). End statements with ;.',
+      'On line 8 use cin >> energy; add ; at the end of line 9. On line 10 add a statement starting with cout << energy.',
+      'cin >> energy;\nenergy = energy - usage;\ncout << "LEFT: " << energy << \'\\n\';\nThe output format is up to you. The last number printed is graded.',
+    ];
+    translateTools(d.tools, [
+      ['cin >> variable', 'Keyboard (standard input)', 'Value in the input box', 'Stores the input in a variable', 'The variable changes', 'Reading a different value each run'],
+      ['variable = expression;', 'Variable on the left', 'Value of the expression on the right', 'Stores a new value in the variable', 'Only the left variable changes', 'Keeping a calculated result'],
+      ['cout << value', 'Screen (standard output)', 'Value to print', 'Displays the value', 'Variables do not change', 'Showing a result'],
+    ]);
+    return missions;
+  }
+  const missionCache = { ko: MISSIONS };
+  function getMissions(value) {
+    if (value !== 'en') return MISSIONS;
+    if (!missionCache.en) missionCache.en = englishMissions();
+    return missionCache.en;
+  }
+  const EN_CHAPTERS = CHAPTERS.map((chapter, i) => Object.assign({}, chapter, {
+    zone: ['Starting Base', 'Doors and Routes', 'Command Workshop', 'Parts Warehouse', 'Wiring Room', 'Robot Assembly', 'Specialist Training', 'Resource Center', 'General Workshop', 'Control Center'][i],
+    action: ['Calculate input power to start the base', 'Automate movement and charging with conditions and loops', 'Make functions for repeated work and modify original values', 'Process arrays and decode text signals', 'Connect addresses and manipulate pointed-to values', 'Combine state and behavior to create robots', 'Assign roles using inheritance, composition and polymorphism', 'Manage object lifetimes and dynamic memory', 'Use templates, STL and operator overloading', 'Connect file storage, input and exception handling'][i],
+  }));
+  const EN_ERROR_TYPES = {
+    order: 'Build order', semicolon: 'Statement ending (;)', name: 'Names and capitalization',
+    direction: 'Input/output direction (<< >>)', namespace: 'std namespace', intDivision: 'Integer division',
+    conversion: 'double to int conversion', evalOrder: 'Evaluation order', hardcode: 'Hard-coded input',
+    noOutput: 'Missing output', input: 'Input value', uninit: 'Use before initialization', syntax: 'Other syntax',
+  };
+  const EN_ERROR_LABEL = { compile: 'Compile error', link: 'Link error', runtime: 'Runtime problem', ub: 'Runtime problem', input: 'Runtime problem (input)', unsupported: 'Not supported by simulator' };
+  function getChapters(value) { return value === 'en' ? EN_CHAPTERS : CHAPTERS; }
+  function getErrorTypes(value) { return value === 'en' ? EN_ERROR_TYPES : ERROR_TYPES; }
+  function getErrorLabels(value) { return value === 'en' ? EN_ERROR_LABEL : ERROR_LABEL; }
   const api = {
-    CHAPTERS, MISSIONS, ERROR_TYPES, ERROR_LABEL,
+    CHAPTERS, MISSIONS, ERROR_TYPES, ERROR_LABEL, getMissions, setLang, getChapters, getErrorTypes, getErrorLabels,
     classifySimError, checkOrder, buildBlankSource, blanksFilled, checkSignal, checkShare, checkBase,
     expectedLeft, diagnoseApply, numbersIn, fillTemplate,
   };

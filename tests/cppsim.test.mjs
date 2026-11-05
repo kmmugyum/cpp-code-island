@@ -115,3 +115,72 @@ test('each step records exactly the output it added and the variables it changed
 test('control flow from later lectures is marked unsupported, not as a C++ error', () => {
   assert.equal(Sim.run(prog(['int x = 1;', 'if (x) x = 2;'])).error.kind, 'unsupported');
 });
+
+test('diagnostic codes are stable and messages follow the requested language', () => {
+  const source = prog(['int energy = 2;', 'cout << Energy;']);
+  const ko = Sim.run(source, { lang: 'ko' }).error;
+  const en = Sim.run(source, { lang: 'en' }).error;
+  assert.equal(ko.code, 'caseMismatch');
+  assert.equal(en.code, ko.code);
+  assert.equal(en.line, ko.line);
+  assert.notEqual(en.message, ko.message);
+  assert.doesNotMatch(en.message, /[가-힣]/);
+  Sim.setLang('en');
+  try {
+    assert.equal(Sim.getLang(), 'en');
+    assert.equal(Sim.run(source).error.message, en.message);
+    assert.equal(Sim.run(source, { lang: 'ko' }).error.message, ko.message);
+    assert.equal(Sim.getLang(), 'en');
+  } finally {
+    Sim.setLang('ko');
+  }
+});
+
+test('English execution notes are localized', () => {
+  const result = Sim.run(prog(['int x;', 'cin >> x;', 'x = x + 1;', 'cout << x;']), { lang: 'en', input: '2.5' });
+  assert.equal(result.ok, true);
+  assert.ok(result.steps.flatMap((step) => step.notes).length > 0);
+  for (const note of result.steps.flatMap((step) => step.notes)) {
+    assert.doesNotMatch(note, /[가-힣]/);
+  }
+});
+
+test('diagnostic codes identify representative errors', () => {
+  const cases = [
+    ['linkNoMain', 'int Main() {}'],
+    ['missingSemicolon', prog(['int x = 1'])],
+    ['colonInsteadOfSemicolon', prog(['int x = 1:'])],
+    ['semicolonBefore', prog(['int x = 1 int y;'])],
+    ['nameNeedsStd', prog(['cout << 1;'], { std: false })],
+    ['endlNeedsStd', prog(['std::cout << endl;'], { std: false })],
+    ['wrongArrowCin', prog(['int x;', 'cin << x;'])],
+    ['wrongArrowCout', prog(['cout >> 1;'])],
+    ['singleArrow', prog(['cout < 1;'])],
+    ['streamNeedsArrow', prog(['cout 1;'])],
+    ['streamParen', prog(['cout(1);'])],
+    ['cinUndeclared', prog(['cin >> x;'])],
+    ['unknownIoName', prog(['print;'])],
+    ['notInStd', prog(['std::foo;'])],
+    ['undeclaredVar', prog(['x = 1;'])],
+    ['undeclared', prog(['cout << x;'])],
+    ['caseMismatch', prog(['int energy = 1;', 'cout << Energy;'])],
+    ['uninitRead', prog(['int x;', 'cout << x;'])],
+    ['uninitCompound', prog(['int x;', 'x += 1;'])],
+    ['inputMissing', prog(['int x;', 'cin >> x;'])],
+    ['inputBad', prog(['int x;', 'cin >> x;']), { input: 'bad' }],
+    ['needIostream', prog(['cout << 1;'], { include: false })],
+    ['intDivZero', prog(['cout << 1 / 0;'])],
+    ['intOverflow', prog(['int x = 2147483647;', 'x += 1;'])],
+    ['percentDouble', prog(['cout << 1.0 % 2;'])],
+    ['percentDouble', prog(['double x = 1.0;', 'x %= 2;'])],
+  ];
+  for (const [code, source, options] of cases) {
+    const ko = Sim.run(source, { ...options, lang: 'ko' });
+    const en = Sim.run(source, { ...options, lang: 'en' });
+    assert.equal(ko.error?.code, code, source);
+    assert.equal(en.error?.code, code, source);
+    assert.equal(en.error.line, ko.error.line, source);
+    assert.notEqual(en.error.message, ko.error.message, source);
+    assert.doesNotMatch(en.error.message, /[가-힣]/, source);
+  }
+});

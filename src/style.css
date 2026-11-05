@@ -50,6 +50,7 @@ img.px-ico, img.px-item { flex: none; vertical-align: middle; }
   box-shadow: var(--px4), 8px 8px 0 4px rgba(26, 28, 44, .5);
 }
 .btn {
+  position: relative; /* 화면에 숨긴 라벨(sr)이 버튼 밖으로 나가 페이지 폭을 넓히지 않도록 */
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   min-height: 40px; padding: 6px 12px; margin: 3px; border: 0; cursor: pointer;
   background: var(--white); color: var(--ink); font-weight: 700; font-size: 14px; line-height: 1.2; text-decoration: none;
