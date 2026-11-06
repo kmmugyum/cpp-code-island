@@ -20,16 +20,22 @@ You repair a broken island with C++. Every time a line runs, the game highlights
 
 <p align="center"><img src="./images/en-scene-base.png" width="480" alt="Mission 1-4 Power Up the Base: energy changed, usage read"></p>
 
-## Missions (Chapter 1: Starting Base)
+## Missions
 
-| Mission | Goal | Covers |
+Each MIT 6.096 lecture is one zone of the island. Every chapter has 4 core missions, and finishing all of them unlocks the next chapter. Tutors can skip ahead with **Unlock all chapters** in Record or `?unlock=all`. The lecture notes' optional challenges (recursion, overloading, `friend`, macros, and so on) are not included yet.
+
+| Chapter · zone | Missions | Covers |
 |---|---|---|
-| 1-1 Startup Sequence | Connect the build machines in order to start the base | source, preprocessor, compiler, linker, executable |
-| 1-2 Send a Signal | Show `READY` on the control screen | `main`, `cout`, `;`, case sensitivity, `using namespace std` |
-| 1-3 Share the Power | Share power equally between robots | integer vs. floating-point division, `int` vs. `double`, evaluation order |
-| 1-4 Power Up the Base | Subtract usage from the input power and print what's left | `cin >>`, assignment, fixing compile errors |
-
-The island map shows all 10 lectures of 6.096. Chapter 1 is playable today; the rest will be added in lecture order.
+| 1 Starting Base | Startup Sequence, Send a Signal, Share the Power, Power Up the Base | build steps, `main`, `cout`/`cin`, integer vs. floating-point division |
+| 2 Automatic Doors and Routes | Power Check Door, Route Selection, Charging Station, Connect the Route | `if/else` boundaries, `switch` and `break`, `while`/`do-while`, `for` iteration counts |
+| 3 Command Workshop | Extract a Command, Return the Result, Connect the Call, Charge the Real Battery | extracting functions, `return`, declaration vs. definition, pass by value vs. reference |
+| 4 Parts Warehouse | Find the Warehouse Slot, Count the Inventory, Warehouse Map, Repair the Character Signal | indexes, array loops, 2D arrays, `'\0'` and `<cctype>` |
+| 5 Wiring Room | Connect an Address, Repair the Connected Battery, Find the Missing Connection, Move the Connection | `&` and `*`, pointers to the same target, `nullptr` checks, pointer arithmetic |
+| 6 Robot Assembly | Robot Blueprint, Robot Commands, Factory Settings, Protected Energy | classes and objects, member function `a.charge(20)`, constructors and copy initialization, `private` |
+| 7 Specialist Robot Training Ground | Build a Common Robot, What Is a Battery?, Dispatch a Work Command, Work Contract | inheritance vs. composition, `virtual` and dynamic dispatch, pure virtual functions |
+| 8 Resource Depot | Temporary Workshop, Borrow a Resource, Resource Return Inspection, The Broken Copy | object lifetime, `new`/`delete`, `new[]`/`delete[]`, shallow vs. deep copy |
+| 9 General Workshop | Generic Calculator, Generic Parts Box, Parts Sorter, Resource Combiner | function and class templates, `std::set`, `sort`/`binary_search`, `operator+` |
+| 10 Central Control | Records Archive, Control Input, Central Manager, Final Restoration | `ofstream`/`ifstream`, `getline` and `enum`, `const` member functions, exceptions |
 
 ## Controls
 
@@ -51,7 +57,9 @@ Progress is saved in your browser's storage. There is no server, so to share it 
 
 ## Not a real C++ compiler
 
-The in-game runner is an educational simulator for Chapter 1 syntax only (`#include <iostream>`, `int`/`double`/`char`/`bool`, arithmetic and `%`, assignment, `cin`, `cout`, `endl`, `return`). For every code combination used in the missions, its output and its compile/link error split were checked against `clang++` (C++17). Undefined behavior such as reading an uninitialized variable never shows a made-up value; the simulator stops and explains instead.
+The in-game runner is an educational simulator, not a real C++ compiler. It covers mission-relevant subsets of control flow, functions, arrays, pointers, classes, memory, templates, files, and exceptions; some C++ syntax is not supported. Undefined behavior such as reading an uninitialized variable never shows a made-up value; the simulator stops and explains instead.
+
+Every code-card combination and test input used in the missions (657 programs) was compared with `clang++` (C++17): compile errors, link errors, whether the program runs, its output, and written files all match. The 29 programs with undefined behavior or printed memory addresses are left out of the output comparison. To re-check, run `node scripts/crosscheck.mjs` (requires clang++).
 
 ## Development
 
@@ -68,14 +76,16 @@ While developing, open `src/index.html` directly in a browser. `npm run build` p
 
 ```
 src/
-  cppsim.js     Chapter 1 C++ simulator (tokenizer, parser, step-by-step trace)
-  missions.js   mission data and grading (no DOM, used by Node tests)
+  cppsim.js     educational C++ simulator (tokenizer, parser, step-by-step trace)
+  missions.js   chapter registry, grading helpers and localized mission lookup
+  missions/     chapter mission data and checks
   i18n.js       Korean/English UI strings
   pixel.js      palette, sprites, 3x5 pixel font, icons
   scene.js      integer-scale canvas scene engine and per-mission scenes
   sfx.js        WebAudio sound effects
   app.js        UI, run controls, progress storage
 tests/          node:test tests
+scripts/        clang++ cross-check script (development only)
 build.mjs       single-file HTML bundler
 ```
 

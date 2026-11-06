@@ -440,8 +440,31 @@ dialog .close { position: absolute; top: 8px; right: 8px; }
 }
 .reduce-motion *, .reduce-motion *::before, .reduce-motion *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 
+.chapter-select-label { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 13px; color: var(--silver); min-width: 0; max-width: 100%; flex: 0 1 auto; }
+.chapter-select-label select {
+  min-height: 36px; width: 100%; min-width: 0; max-width: min(21rem, 100%); padding: 4px 28px 4px 10px; margin: 3px;
+  font: inherit; font-size: 13px; font-weight: 700; color: var(--white); background-color: var(--night);
+  border: 0; border-radius: 0; box-shadow: var(--px3), inset 0 -3px 0 0 var(--ink); cursor: pointer; text-overflow: ellipsis;
+  -webkit-appearance: none; appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--white) 50%), linear-gradient(135deg, var(--white) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+}
+.chapter-select-label select:hover { background-color: var(--slate); }
+.chapter-select-label select:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+.chapter-select-label select option { background: var(--night); color: var(--white); }
+.chapter-select-label select option:disabled { color: var(--silver); }
+@media (max-width: 599px) {
+  .chapter-select-label { flex: 1 1 100%; }
+  .chapter-select-label > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .chapter-select-label select { max-width: 100%; margin: 3px 0; }
+  .topbar { max-width: 100vw; overflow-x: clip; }
+  .chapter-hud { max-width: 100%; }
+}
+.result-grid section pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
 /* 터치·좁은 화면: 모든 조작 요소 44px 이상 (위 규칙보다 뒤에 두어 우선 적용) */
 @media (pointer: coarse), (max-width: 899px) {
-  .btn, .btn.small, .tool-btn, .tab, .chip, .code-card, .inv-slot, .px-input { min-height: 44px; min-width: 44px; }
+  .btn, .btn.small, .tool-btn, .tab, .chip, .code-card, .inv-slot, .px-input, .chapter-select-label select { min-height: 44px; }
+  .btn, .btn.small, .tool-btn, .tab, .chip, .code-card, .inv-slot, .px-input { min-width: 44px; }
   .blank { min-height: 40px; }
 }

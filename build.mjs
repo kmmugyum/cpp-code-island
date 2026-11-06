@@ -1,5 +1,5 @@
 // src/index.html 의 <link>/<script src> 를 인라인해 설치 없이 여는 단일 HTML 을 만든다.
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,7 +8,10 @@ const src = (name) => readFileSync(join(root, 'src', name), 'utf8');
 
 let html = src('index.html');
 html = html.replace(/<link rel="stylesheet" href="([^"]+)">/g, (_, file) => `<style>\n${src(file)}</style>`);
-html = html.replace(/<script src="([^"]+)"><\/script>/g, (_, file) => `<script>\n${src(file).replace(/<\/script/gi, '<\\/script')}</script>`);
+html = html.replace(/<script src="([^"]+)"><\/script>/g, (_, file) => {
+  if (/^missions\/ch\d\d\.js$/.test(file) && !existsSync(join(root, 'src', file))) return '';
+  return `<script>\n${src(file).replace(/<\/script/gi, '<\\/script')}</script>`;
+});
 
 if (/<script src=|<link rel="stylesheet"/.test(html)) throw new Error('외부 리소스 참조가 남아 있습니다.');
 

@@ -71,7 +71,7 @@ test('steps say which variables a statement read, separately from what it change
   const [declUsage, declE, cin, assign, cout, compound] = r.steps;
   assert.deepEqual([declUsage.kind, cin.kind, assign.kind, cout.kind], ['decl', 'cin', 'assign', 'cout']);
   assert.deepEqual(declE.reads, []);
-  assert.deepEqual(cin.inputs, [{ name: 'e', text: '100' }]);
+  assert.deepEqual(cin.inputs, [{ name: 'e', path: 'e', text: '100' }]);
   assert.deepEqual(assign.reads.sort(), ['e', 'usage']);
   assert.deepEqual(assign.changed, ['e']);
   assert.deepEqual(cout.reads, ['e']);
@@ -112,8 +112,15 @@ test('each step records exactly the output it added and the variables it changed
   assert.equal(r.exitCode, 0);
 });
 
-test('control flow from later lectures is marked unsupported, not as a C++ error', () => {
-  assert.equal(Sim.run(prog(['int x = 1;', 'if (x) x = 2;'])).error.kind, 'unsupported');
+test('chapter 2 control flow executes without changing chapter 1 programs', () => {
+  const result = Sim.run(prog(['int x = 1;', 'if (x) x = 2;']));
+  assert.equal(result.ok, true);
+  assert.equal(result.vars.find(v => v.name === 'x').value, 2);
+});
+
+test('features outside the supported subset remain unsupported', () => {
+  const result = Sim.run(prog(['std::vector<int> values;']), { lang: 'en' });
+  assert.equal(result.error.kind, 'unsupported');
 });
 
 test('diagnostic codes are stable and messages follow the requested language', () => {

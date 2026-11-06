@@ -117,6 +117,10 @@
   }
 
   const rec = (m) => progress.missions[m.id];
+  const chapterNo = m => Number(m.id.split('-')[0]);
+  const chapterMissions = no => MISSIONS.filter(m => chapterNo(m) === no);
+  const unlocked = no => no === 1 || settings.unlockAll || new URLSearchParams(window.location.search).get('unlock') === 'all' ||
+    (chapterMissions(no - 1).length > 0 && chapterMissions(no - 1).every(m => rec(m).status === 'done'));
   function markTrying(m) { if (rec(m).status === 'none') rec(m).status = 'trying'; }
   function recordError(m, type) {
     if (!type) return;
@@ -145,7 +149,7 @@
     if (m.kind === 'editor') {
       w.code = m.starter;
       w.editing = true;
-      w.input = m.tests[0].input;
+      w.input = m.tests[0].input || '';
     }
     w.phase = m.predict ? 'predict' : 'task';
     w.predict = { answers: [], submitted: false, actual: null, revealed: false };
@@ -213,7 +217,7 @@
   };
 
   function firstOpenMission() {
-    const m = MISSIONS.find((x) => progress.missions[x.id].status !== 'done');
+    const m = MISSIONS.find((x) => unlocked(chapterNo(x)) && progress.missions[x.id].status !== 'done');
     return (m || MISSIONS[0]).id;
   }
 
@@ -287,7 +291,7 @@
       if (o.blanks[part]) {
         const idx = o.choices[part];
         const opt = idx === undefined ? null : o.blanks[part][idx];
-        const shown = opt ? (opt.code === '' ? (tr("ui.empty")) : opt.code) : '▢';
+        const shown = opt ? (opt.code === '' ? (tr("ui.empty")) : M.fillTemplate(opt.code, o.params || {})) : '▢';
         const n = Object.keys(o.blanks).indexOf(part) + 1;
         html += `<button class="blank ${opt ? 'filled' : 'empty'} ${o.activeBlank === part ? 'active' : ''}" data-blank="${part}" aria-pressed="${o.activeBlank === part}" aria-label="${tr("ui.blank")} ${n}: ${opt ? esc(shown) : (tr("ui.empty2"))}${o.activeBlank === part ? (tr("ui.selected")) : ''}">${esc(shown)}</button>`;
       } else if (o.params && part in o.params) {
@@ -321,8 +325,8 @@
 
   function currentTest(m, w) {
     if (m.kind === 'editor') {
-      const fixed = m.tests.find((t) => t.input === w.input.trim());
-      return fixed || { input: w.input, label: `${tr("ui.input")} ${w.input.trim() || (tr("ui.none"))}` };
+      const fixed = m.tests.find((t) => (t.input || '') === w.input.trim());
+      return fixed || { ...m.tests[0], input: w.input, label: `${tr("ui.input")} ${w.input.trim() || (tr("ui.none"))}` };
     }
     const v = currentVariant(m, w);
     return v.tests ? v.tests[w.testIndex] : null;
@@ -439,7 +443,7 @@
     }
     const test = currentTest(m, w);
     const source = sourceFor(m, w, test);
-    const result = Sim.run(source, { input: test && test.input !== undefined ? test.input : '' });
+    const result = Sim.run(source, { input: test && test.input !== undefined ? test.input : '', files: test && test.files || {}, lang: I18N.lang });
     rec(m).attempts += 1;
     markTrying(m);
     w.applyReport = null;
@@ -486,10 +490,8 @@
     const run = w.run;
     run.graded = true;
     const result = run.result;
-    let verdict;
-    if (m.id === '1-2') verdict = M.checkSignal(currentVariant(m, w), result);
-    else if (m.id === '1-3') verdict = M.checkShare(run.test, result);
-    else verdict = M.checkBase(run.test, result);
+    const checker = m.kind === 'blanks' ? currentVariant(m, w).check : m.check;
+    const verdict = checker(result, run.test, M.h);
     run.pass = verdict.pass;
 
     if (!verdict.pass) {
@@ -499,28 +501,32 @@
       saveProgress();
       return;
     }
+    if (m.apply === 'variant' && w.variant === 'apply' && currentVariant(m, w).tests.length > 1) {
+      runApplyCheck(true);
+      return;
+    }
 
     const r = rec(m);
-    const isBaseRun = m.id === '1-2' ? w.variant === 'base' : m.id === '1-3' ? w.testIndex === 0 : true;
+    const isBaseRun = m.kind === 'blanks' ? w.variant === 'base' && w.testIndex === 0 : run.test === m.tests[0] || run.test.input === m.tests[0].input;
     const firstDone = isBaseRun && r.status !== 'done';
     if (isBaseRun) r.status = 'done';
-    if (m.id === '1-2' && w.variant === 'apply') r.applied = true;
+    if (isBaseRun && w.predict.submitted && !w.predict.actual && m.predict) {
+      const actual = m.predict.answersFrom(result);
+      w.predict.actual = actual;
+      m.predict.questions.forEach((q, i) => rec(m).predictions.push({ q: q.label, answer: w.predict.answers[i], actual: actual[i], correct: String(w.predict.answers[i]) === String(actual[i]) }));
+      saveWork();
+    }
+    if (m.apply === 'variant' && w.variant === 'apply' && r.status === 'done') r.applied = true;
     w.successKey = Date.now();
     Sfx.play('success');
 
     const details = [];
-    if (m.id === '1-4' && w.predict.submitted) {
+    if (m.predict && m.predict.summary && w.predict.submitted) {
       const guess = w.predict.answers[0];
-      details.push(`${tr("ui.initialRemainingAmountPrediction")}${guess === '' || guess === undefined ? (tr("ui.blank2")) : guess}${tr("ui.actualRemainingAmountWithInput100")}`);
+      details.push(`${tr("ui.initialRemainingAmountPrediction")}${guess === '' || guess === undefined ? tr("ui.blank2") : guess}${tr("ui.actualRemainingAmountWithInput100")}`);
     }
-    let next;
-    if (m.id === '1-2') {
-      next = w.variant === 'base' ? (tr("ui.trySendingTheGOApplicationSignal")) : (tr("ui.bothSignalsSentMoveOnTo"));
-    } else if (r.applied) {
-      next = (tr("ui.youHaveCompletedThisMissionAnd"));
-    } else {
-      next = (tr("ui.useTestWithOtherInputsTo"));
-    }
+    const next = r.applied ? tr("ui.youHaveCompletedThisMissionAnd") :
+      m.apply === 'variant' ? tr("chapter.applyVariant") : tr("ui.useTestWithOtherInputsTo");
     w.feedback = {
       tone: 'success',
       title: firstDone ? `${tr("ui.missionComplete")}${m.reward.name}${tr("ui.acquired")}` : (tr("ui.success")),
@@ -528,7 +534,7 @@
       details,
       reuse: m.reuse,
       next,
-      action: m.id === '1-2' && w.variant === 'base' ? { label: (tr("ui.goToApplicationGO")), variant: 'apply' } : (!r.applied && m.id !== '1-2' ? { label: (tr("ui.testWithOtherInputs")), apply: true } : null),
+      action: !r.applied ? (m.apply === 'variant' ? { label: tr('chapter.applyVariant'), variant: 'apply' } : { label: tr('ui.testWithOtherInputs'), apply: true }) : null,
       reflect: r.status === 'done',
     };
     noteResult();
@@ -565,7 +571,7 @@
       recordError(m, verdict.errorType);
       const label = ERROR_LABEL[verdict.kind] || (tr("ui.error"));
       const next = verdict.kind === 'unsupported'
-        ? (tr("ui.rewriteUsingTheChapter1Syntax"))
+        ? tr("chapter.unsupported")
         : verdict.kind === 'compile' || verdict.kind === 'link'
           ? tr('format.fixLine', { line: verdict.line })
           : (tr("ui.checkTheLineWithTheError"));
@@ -578,13 +584,16 @@
     if (m.kind === 'blanks') {
       const v = currentVariant(m, w);
       const choices = w.choices[v.id];
+      let recordedVerdictType = false;
       for (const key of Object.keys(v.blanks)) {
         const opt = v.blanks[key][choices[key]];
         if (opt && opt.why) {
           details.push(`${opt.code}: ${opt.why}`);
           recordError(m, opt.errorType);
+          if (opt.errorType === verdict.errorType) recordedVerdictType = true;
         }
       }
+      if (verdict.errorType && !recordedVerdictType) recordError(m, verdict.errorType);
     } else {
       recordError(m, verdict.errorType || 'syntax');
     }
@@ -593,12 +602,12 @@
       title: (tr("ui.theProgramRanButDidNot")),
       message: verdict.message,
       details,
-      next: m.id === '1-3' ? (tr("ui.checkTheBatteryInTheScene")) : (tr("ui.compareTheOutputAndVariableTable")),
+      next: tr("ui.compareTheOutputAndVariableTable"),
       fix,
     };
   }
 
-  function runApplyCheck() {
+  function runApplyCheck(fromVariantRun = false) {
     const m = mission();
     const w = W();
     stopPlay();
@@ -609,14 +618,16 @@
       return;
     }
     const report = tests.map((test) => {
-      const result = Sim.run(sourceFor(m, w, test), { input: test.input || '' });
-      const verdict = m.id === '1-3' ? M.checkShare(test, result) : M.checkBase(test, result);
+      const result = Sim.run(sourceFor(m, w, test), { input: test.input || '', files: test.files || {}, lang: I18N.lang });
+      const checker = m.kind === 'blanks' ? currentVariant(m, w).check : m.check;
+      const verdict = checker(result, test, M.h);
       return { test, verdict };
     });
     w.applyReport = report;
     rec(m).attempts += 1;
     markTrying(m);
     const failures = report.filter((x) => !x.verdict.pass);
+    if (fromVariantRun && w.run) w.run.pass = failures.length === 0;
     if (!failures.length) {
       rec(m).applied = true;
       if (rec(m).status !== 'done') rec(m).status = 'done';
@@ -624,7 +635,7 @@
       Sfx.play('success');
       w.feedback = {
         tone: 'success', title: (tr("ui.applicationCheck")), message: tr('format.applySuccess', { count: report.length }),
-        reuse: m.reuse, next: nextMission(m) ? (tr("ui.moveOnToTheNextMission")) : (tr("ui.youHaveCompletedAllChapter1")), reflect: true,
+        reuse: m.reuse, next: nextMission(m) ? tr("ui.moveOnToTheNextMission") : tr("chapter.allComplete"), reflect: true,
       };
     } else {
       const details = [];
@@ -688,17 +699,19 @@
       m.predict.questions.forEach((q, i) => {
         const correct = answers[i] === actual[i];
         rec(m).predictions.push({ q: q.label, answer: answers[i], actual: actual[i], correct });
-        if (!correct) recordError(m, 'intDivision');
+        if (!correct && chapterNo(m) === 1) recordError(m, 'intDivision');
       });
       w.run = { kind: 'snippet', key: ++runCounter, source: m.predict.program, result, test: null, stepIndex: 0, graded: true, pass: false };
       w.feedback = { tone: 'info', title: (tr("ui.predictionRecorded")), message: (tr("ui.runOrStepThroughToThe")) };
       sfxForStep(w);
     } else {
-      const actual = m.predict.answersFrom();
-      w.predict.actual = actual;
-      m.predict.questions.forEach((q, i) => {
-        rec(m).predictions.push({ q: q.label, answer: answers[i], actual: actual[i], correct: Number(answers[i]) === Number(actual[i]) });
-      });
+      if (m.predict.answersFrom.length === 0) {
+        const actual = m.predict.answersFrom();
+        w.predict.actual = actual;
+        m.predict.questions.forEach((q, i) => {
+          rec(m).predictions.push({ q: q.label, answer: answers[i], actual: actual[i], correct: Number(answers[i]) === Number(actual[i]) });
+        });
+      }
       w.phase = 'task';
       w.feedback = { tone: 'info', title: (tr("ui.predictionRecorded")), message: (tr("ui.nowFixTheCodeAndRun")) };
     }
@@ -738,7 +751,7 @@
     const m = mission();
     const w = W();
     if (!w.placed.some(Boolean)) return;
-    const result = M.checkOrder(w.placed);
+    const result = m.check(w.placed, null, M.h);
     w.orderResult = result;
     markTrying(m);
     const full = w.placed.filter(Boolean).length === m.cards.length;
@@ -797,13 +810,13 @@
     const steps = run.result.steps;
     if (run.stepIndex < steps.length) {
       const s = steps[run.stepIndex];
-      return { line: s.line, kind: s.kind, before: s.before, after: s.after, outAfter: s.outAfter, outBefore: s.outBefore, printed: s.printed, notes: s.notes, changed: s.changed, reads: s.reads, inputs: s.inputs, error: null };
+      return { ...s, before: s.before || [], after: s.after || [], notes: s.notes || [], changed: s.changed || [], reads: s.reads || [], events: s.events || [], error: null };
     }
     const lastStep = steps[steps.length - 1];
     const vars = lastStep ? lastStep.after : [];
     const out = lastStep ? lastStep.outAfter : '';
     const e = run.result.error;
-    return { line: e.line, kind: 'error', before: vars, after: vars, outAfter: out, outBefore: out, printed: '', notes: [e.message], changed: [], reads: e.reads || [], inputs: [], error: e };
+    return { line: e.line, kind: 'error', before: vars, after: vars, mem: lastStep && lastStep.mem, delta: {}, events: [], outAfter: out, outBefore: out, printed: '', notes: [e.message], changed: [], reads: e.reads || [], inputs: [], error: e };
   }
 
   function phaseOf(m, w) {
@@ -821,6 +834,9 @@
     const run = w.run;
     const model = {
       id: m.id,
+      chapter: chapterNo(m),
+      lang: I18N.lang,
+      scene: m.scene && !m.scene.custom ? m.scene : null,
       phase: phaseOf(m, w),
       restored: rec(m).status === 'done',
       step: st,
@@ -828,19 +844,21 @@
       successKey: w.successKey,
       buildFail: run && (run.result.stage === 'compile' || run.result.stage === 'link') ? run.result.stage : null,
       // 지금 단계까지 실행된 문장들(장면이 '이미 일어난 일'을 그릴 때 사용)
-      past: run && run.stepIndex >= 0 ? run.result.steps.slice(0, run.stepIndex + 1).map((s) => ({ kind: s.kind, changed: s.changed, reads: s.reads })) : [],
+      past: run && run.stepIndex >= 0 ? run.result.steps.slice(0, run.stepIndex + 1).map((s) => ({ kind: s.kind, changed: s.changed, reads: s.reads, events: s.events || [], mem: s.mem })) : [],
+      // main 이 return 했거나 끝까지 갔으면 장면은 끝나기 직전 메모리(finalMem)로 값을 보여 준다
+      finalMem: run ? run.result.finalMem || null : null,
+      mainDone: !!run && run.stepIndex >= 0 && run.result.steps.slice(0, run.stepIndex + 1).some((s) => s.depth === 0 && (s.kind === 'return' || s.kind === 'end')),
     };
-    if (m.id === '1-1') {
+    if (m.kind === 'order') {
       model.check = w.lastCheck;
       model.checkKey = w.lastCheck ? w.lastCheck.key : null;
       model.cards = m.cards;
-    }
-    if (m.id === '1-2') model.target = currentVariant(m, w).target;
-    if (m.id === '1-3') {
+    } else if (m.kind === 'blanks') {
       const v = currentVariant(m, w);
-      model.params = run && run.kind === 'task' && run.test ? run.test.params : v.tests[w.testIndex].params;
-    }
-    if (m.id === '1-4') model.input = run && run.test ? run.test.input : w.input;
+      model.target = v.target;
+      model.params = run && run.kind === 'task' && run.test ? run.test.params : v.tests?.[w.testIndex]?.params;
+      model.input = run && run.test ? run.test.input : v.tests?.[w.testIndex]?.input;
+    } else model.input = run && run.test ? run.test.input : w.input;
     return model;
   }
 
@@ -881,15 +899,20 @@
   }
 
   function renderTopbar() {
-    $('#missionTabs').innerHTML = MISSIONS.map((m) => `
+    const no = chapterNo(mission());
+    const list = chapterMissions(no);
+    const chapter = CHAPTERS[no - 1];
+    $('[data-i18n="chapter.select"]').textContent = tr('chapter.select');
+    $('#chapterSelect').innerHTML = CHAPTERS.map(c => `<option value="${c.no}" ${c.no === no ? 'selected' : ''} ${!c.playable || !unlocked(c.no) ? 'disabled' : ''}>${esc(tr('chapter.number', { number: c.no }))} · ${esc(c.zone)}${!c.playable ? ` (${tr('chapter.later')})` : !unlocked(c.no) ? ` (${tr('chapter.locked')})` : ''}</option>`).join('');
+    $('#missionTabs').innerHTML = list.map((m) => `
       <button class="tab ${m.id === ui.missionId ? 'on' : ''}" data-mission="${m.id}" ${m.id === ui.missionId ? 'aria-current="page"' : ''}>
         ${statusIcon(rec(m))}<span class="tab-id">${m.id}</span><span class="tab-name">${esc(m.title)}</span>
       </button>`).join('');
-    const done = MISSIONS.filter((m) => rec(m).status === 'done').length;
+    const done = list.filter((m) => rec(m).status === 'done').length;
     $('#chapterHud').innerHTML = `
-      <span class="hud-label">${tr("ui.chapter1StartingBase")}</span>
-      <span class="hud-bar" role="img" aria-label="${tr("ui.missions")}${done}/${MISSIONS.length}${tr("ui.complete")}">${MISSIONS.map((m) => `<span class="seg ${rec(m).status === 'done' ? 'on' : ''} ${rec(m).applied ? 'star' : ''}"></span>`).join('')}</span>
-      <span class="hud-num">${done}/${MISSIONS.length}</span>`;
+      <span class="hud-label">${esc(tr('chapter.number', { number: no }))} ${esc(chapter.zone)}</span>
+      <span class="hud-bar" role="img" aria-label="${tr("ui.missions")}${done}/${list.length}${tr("ui.complete")}">${list.map((m) => `<span class="seg ${rec(m).status === 'done' ? 'on' : ''} ${rec(m).applied ? 'star' : ''}"></span>`).join('')}</span>
+      <span class="hud-num">${done}/${list.length}</span>`;
     renderTools();
   }
 
@@ -915,7 +938,8 @@
   function renderGoal() {
     const m = mission();
     const r = rec(m);
-    const allDone = MISSIONS.every((x) => rec(x).status === 'done');
+    const list = chapterMissions(chapterNo(m));
+    const allDone = list.every((x) => rec(x).status === 'done');
     $('#goalbar').innerHTML = `
       <div class="goal-id">${pixText(m.id, 'k', 4)}</div>
       <div class="goal-main">
@@ -928,7 +952,7 @@
         <span class="badge ${r.applied ? 'ok' : ''}">${icon(r.applied ? 'star' : 'ring', r.applied ? 'o' : 'g')} ${tr("ui.applicationCheck")}${r.applied ? '' : (tr("ui.pending"))}</span>
         <button class="btn small ghost" data-action="restart" title="${tr("ui.resetThisMissionSWorkWithout")}">${icon('reset')}<span>${tr("ui.restartMission")}</span></button>
       </div>
-      ${allDone ? `<div class="chapter-clear">${itemImg('house', 3)}<span><b>${tr("ui.chapter1StartingBaseRestored")}</b> ${tr("ui.applicationCheck")} ${MISSIONS.filter((x) => rec(x).applied).length}/${MISSIONS.length}${tr("ui.chapter2SAutomaticDoorsAnd")}</span></div>` : ''}`;
+      ${allDone ? `<div class="chapter-clear">${itemImg('house', 3)}<span><b>${tr("chapter.clear")}</b> ${tr("ui.applicationCheck")} ${list.filter((x) => rec(x).applied).length}/${list.length}</span></div>` : ''}`;
   }
 
   function renderScene() {
@@ -937,12 +961,30 @@
     $('#sceneTitle').innerHTML = `${itemImg(m.reward.item, 2)}<span>${esc(m.zone)}</span>`;
     Scene.set(sceneModel(m, w));
     $('#sceneCaption').innerHTML = sceneCaption(m, w);
-    $('#inventory').innerHTML = `<p class="inv-title">${tr("ui.toolsAcquired")} <small>${tr("ui.selectToViewConcepts")}</small></p><div class="inv-slots">${MISSIONS.map((x) => {
+    $('#inventory').innerHTML = `<p class="inv-title">${tr("ui.toolsAcquired")} <small>${tr("ui.selectToViewConcepts")}</small></p><div class="inv-slots">${chapterMissions(chapterNo(m)).map((x) => {
       const got = rec(x).status === 'done';
       return `<button class="inv-slot ${got ? 'got' : 'locked'}" data-inventory="${x.id}" aria-label="${esc(x.reward.name)}: ${got ? (tr("ui.acquiredViewConcept")) : (tr("ui.stillLocked"))}">
         ${got ? itemImg(x.reward.item, 3) : icon('lock', 'g', 3)}<span>${got ? esc(x.reward.name) : `${x.id}${tr("ui.locked")}`}</span></button>`;
     }).join('')}</div>`;
   }
+  function eventText(e) {
+    const label = tr(`event.${e.type}`);
+    switch (e.type) {
+      case 'call': return `${label} ${e.fn}(${(e.args || []).map(a => `${a.name}=${a.shown}${a.byRef && a.target ? ` → ${a.target}` : ''}`).join(', ')})`;
+      case 'return': return `${label} ${e.fn}${e.value != null ? `: ${e.value}` : ''}`;
+      case 'construct': case 'destruct': return `${label} ${e.class} ${e.path}`;
+      case 'alloc': return `${label} ${e.id} ${e.allocatedType || ''}${e.count != null ? ` [${e.count}]` : ''}`;
+      case 'free': return `${label} ${e.id}`;
+      // 가상 함수가 아니면 정적·동적 타입이 같으므로 따로 설명할 것이 없다
+      case 'dispatch': return e.virtual ? `${label} ${e.object || ''} ${e.method}: ${tr('event.static')} ${e.static} → ${tr('event.dynamic')} ${e.dynamic}` : '';
+      case 'branch': return `${label}: ${tr(e.taken ? 'event.taken' : 'event.notTaken')}`;
+      case 'loop': return `${label}: ${e.iteration} (${e.cond})`;
+      case 'throw': case 'catch': return `${label} ${e.exception || ''} ${e.what || ''}`;
+      case 'file': return `${label} ${tr(`event.${e.op}`)}: ${e.name}`;
+      default: return '';
+    }
+  }
+
 
   function sceneCaption(m, w) {
     const run = w.run;
@@ -959,13 +1001,15 @@
     for (const name of st.changed) {
       const b = st.before.find((x) => x.name === name);
       const a = st.after.find((x) => x.name === name);
-      parts.push(`<span class="cap-change"><code>${esc(name)}</code> ${b && b.value !== undefined ? `${esc(b.shown)} → ` : ''}${esc(a.value === undefined ? (tr("ui.noValue")) : a.shown)} <em>${tr("ui.changed")}</em></span>`);
+      const d = st.delta && st.delta[name];
+      parts.push(`<span class="cap-change"><code>${esc(name)}</code> ${d ? `${esc(d.from ?? '')} → ${esc(d.to ?? '')}` : `${b && b.value !== undefined ? `${esc(b.shown)} → ` : ''}${a ? esc(a.shown ?? tr("ui.noValue")) : ''}`} <em>${tr("ui.changed")}</em></span>`);
     }
     const readOnly = st.reads.filter((n) => !st.changed.includes(n));
     if (readOnly.length) parts.push(`<span class="cap-read">${readOnly.map((n) => `<code>${esc(n)}</code>`).join(', ')} <em>${tr("ui.read")}</em></span>`);
     if (st.kind === 'cout') parts.push(("<span class=\"cap-out\"><em>" + tr("ui.outputOnly") + "</em> " + tr("ui.textAppearedOnScreenVariablesAre") + "</span>"));
-    if (st.inputs && st.inputs.length) parts.push(`<span>${tr("ui.input")} ${st.inputs.map((x) => `${esc(x.text)} → <code>${esc(x.name)}</code>`).join(', ')}</span>`);
-    if (st.kind === 'return' || st.kind === 'end') parts.push(("<span>" + tr("ui.programEnded") + "</span>"));
+    if (st.inputs && st.inputs.length) parts.push(`<span>${tr("ui.input")} ${st.inputs.map((x) => `${esc(x.text)} → <code>${esc(x.path || x.name)}</code>`).join(', ')}</span>`);
+    if ((st.kind === 'return' || st.kind === 'end') && !st.depth) parts.push(("<span>" + tr("ui.programEnded") + "</span>"));
+    parts.push(...(st.events || []).map(eventText).filter(Boolean).map(text => `<span>${esc(text)}</span>`));
     return parts.join(' · ');
   }
 
@@ -1039,11 +1083,11 @@
         const ok = w.predict.answers[i] === w.predict.actual[i];
         return `<tr class="${ok ? 'ok' : 'no'}"><td>${esc(q.label)}</td><td>${esc(w.predict.answers[i])}</td><td>${esc(w.predict.actual[i])} ${ok ? (tr("ui.match")) : (tr("ui.different"))}</td></tr>`;
       }).join('')}</table>
-      <p>${tr("ui.both5And2AreIntegers")}<code>5 / 2</code>${tr("ui.becomes2AfterDiscardingTheFractional")}<code>5 / 2.0</code>${tr("ui.is25LectureP6")}</p>
-      <button class="btn primary" data-action="to-task">${icon('arrow')}${tr("ui.goFixTheDistributionDevice")}</button></div>`;
+      ${p.explanation ? `<p>${esc(p.explanation)}</p>` : ''}
+      <button class="btn primary" data-action="to-task">${icon('arrow')}${p.explanation ? tr("ui.goFixTheDistributionDevice") : tr("chapter.goTask")}</button></div>`;
     }
     const st = stepState(w);
-    const code = p.program ? codeView(p.program.split('\n'), { activeLine: st ? st.line : null, marks: st ? { change: st.changed, read: st.reads } : null }) : '';
+    const code = p.program ? `<div class="code-scroll">${codeView(p.program.split('\n'), { activeLine: st ? st.line : null, marks: st ? { change: st.changed, read: st.reads } : null })}</div>` : '';
     return `${benchHead((tr("ui.predictBeforeRunning")), esc(p.intro))}
       ${code}
       <div class="predict">${qs}</div>
@@ -1071,7 +1115,7 @@
           </button>`).join('')}</div></div>`
       : ("<div class=\"tray\"><p class=\"tray-title\">" + tr("ui.allBlanksAreFilledSelectA") + "</p></div>");
     const tests = v.tests ? `<div class="test-row"><span class="test-label">${tr("ui.testInput")}</span>${v.tests.map((t, i) => `<button class="btn small chip ${i === w.testIndex ? 'on' : ''}" data-test="${i}" aria-pressed="${i === w.testIndex}">${esc(t.label)}${i === 0 ? (tr("ui.default")) : ''}</button>`).join('')}
-      <button class="btn small" data-action="apply-check" ${rec(m).status === 'done' ? '' : ("disabled title=\"" + tr("ui.firstSucceedWithTheDefaultInput") + "\"")}>${icon('star')}${tr("ui.testWithOtherInputs")}</button></div>` : '';
+      ${m.apply === 'variant' ? '' : `<button class="btn small" data-action="apply-check" ${rec(m).status === 'done' ? '' : 'disabled'}>${icon('star')}${tr("ui.testWithOtherInputs")}</button>`}</div>` : '';
     return `${benchHead((tr("ui.codeWorkbench")), (tr("ui.selectAInTheCodeThen")))}
       ${tabs}
       <div class="code-scroll">${codeView(v.template.split('\n'), { blanks: v.blanks, choices, params, activeBlank: active, activeLine: st && !st.error ? st.line : null, errorLine: err ? err.line : null, marks: st ? { change: st.changed, read: st.reads } : null })}</div>
@@ -1082,7 +1126,7 @@
   function editorBench(m, w) {
     const err = w.run && w.run.result.error;
     const inputRow = `<div class="test-row"><label class="test-label" for="cinInput">${tr("ui.inputCin")}</label><input id="cinInput" class="px-input" inputmode="numeric" value="${esc(w.input)}" size="6">
-      ${m.tests.map((t) => `<button class="btn small chip ${t.input === w.input.trim() ? 'on' : ''}" data-input="${esc(t.input)}" aria-pressed="${t.input === w.input.trim()}">${esc(t.input)}</button>`).join('')}
+      ${m.tests.filter(t => t.input !== undefined).map((t) => `<button class="btn small chip ${t.input === w.input.trim() ? 'on' : ''}" data-input="${esc(t.input)}" aria-pressed="${t.input === w.input.trim()}">${esc(t.label || t.input)}</button>`).join('')}
       <button class="btn small" data-action="apply-check" ${rec(m).status === 'done' ? '' : ("disabled title=\"" + tr("ui.firstSucceedWithTheDefaultInput") + "\"")}>${icon('star')}${tr("ui.testWithOtherInputs")}</button></div>`;
     if (!w.editing && w.run) {
       const st = stepState(w);
@@ -1138,15 +1182,23 @@
       ${run && run.test && run.test.input !== undefined ? `<p class="muted small">${tr("ui.inputCin2")}<code>${esc(run.test.input || (tr("ui.none")))}</code></p>` : ''}
       ${st && st.kind === 'cout' ? ("<p class=\"small out-note\"><em class=\"b-output\">" + tr("ui.outputOnly") + "</em> " + tr("ui.textWasSentToTheScreen") + "</p>") : ''}`;
 
-    const varRows = st && st.after.length
-      ? st.after.map((v) => {
-        const before = st.before.find((b) => b.name === v.name);
-        const changed = st.changed.includes(v.name);
-        const read = !changed && st.reads.includes(v.name);
-        const badge = changed ? ("<em class=\"b-change\">" + tr("ui.changed") + "</em>") : read ? ("<em class=\"b-read\">" + tr("ui.read") + "</em>") : '';
-        return `<tr class="${changed ? 'changed' : read ? 'read' : ''}"><td><code>${esc(v.name)}</code>${badge}</td><td>${v.type}</td><td>${before ? esc(shownValue(before)) : ("<span class=\"muted\">" + tr("ui.none2") + "</span>")}</td><td><b>${esc(shownValue(v))}</b></td></tr>`;
-      }).join('')
-      : ("<tr><td colspan=\"4\" class=\"muted\">" + tr("ui.noVariablesCreatedYet") + "</td></tr>");
+    const mem = st && st.mem;
+    const frames = mem && mem.frames || [];
+    const cells = frames.length ? [...(frames.length > 1 ? frames[0].vars : []), ...frames[frames.length - 1].vars, ...(mem.globals || []), ...(mem.heap || []).map(b => b.cell).filter(Boolean)] : st ? st.after : [];
+    const flat = [];
+    function flatten(cell) { flat.push(cell); for (const child of [...(cell.elems || []), ...(cell.fields || [])]) flatten(child); }
+    cells.forEach(flatten);
+    const varRows = flat.map(v => {
+      const path = v.path || v.name;
+      const d = st.delta && st.delta[path];
+      const before = st.before.find(b => b.name === path);
+      const changed = st.changed.includes(path), read = !changed && st.reads.includes(path);
+      const badge = changed ? `<em class="b-change">${tr('ui.changed')}</em>` : read ? `<em class="b-read">${tr('ui.read')}</em>` : '';
+      return `<tr class="${changed ? 'changed' : read ? 'read' : ''}"><td><code>${esc(path)}</code>${badge}</td><td>${esc(v.type || '')}</td><td>${esc(d ? d.from ?? tr('ui.none2') : before ? shownValue(before) : tr('ui.none2'))}</td><td><b>${esc(v.shown ?? shownValue(v))}</b></td></tr>`;
+    }).join('') || `<tr><td colspan="4" class="muted">${tr('ui.noVariablesCreatedYet')}</td></tr>`;
+    const memoryDetails = mem ? `<section class="px-panel"><h3>${tr('memory.stack')}</h3><ol>${frames.map(f => `<li><code>${esc(f.fn)}</code> · ${esc(f.line ?? '')}</li>`).join('')}</ol>
+      <h3>${tr('memory.heap')}</h3><ul>${(mem.heap || []).map(b => `<li><code>${esc(b.id)}</code> ${esc(b.type)} ${b.freed ? tr('memory.freed') : (run && atEnd(run) && (run.result.leaks || []).some(l => l.id === b.id) ? tr('memory.leaked') : '')}</li>`).join('') || `<li>${tr('memory.empty')}</li>`}</ul>
+      <h3>${tr('memory.files')}</h3><ul>${Object.entries(mem.files || {}).map(([name, content]) => `<li><code>${esc(name)}</code><pre>${esc(content)}</pre></li>`).join('') || `<li>${tr('memory.empty')}</li>`}</ul></section>` : '';
 
     el.innerHTML = `${feedbackHtml(w.feedback)}
       ${w.applyReport ? applyTable(w.applyReport) : ''}
@@ -1154,6 +1206,7 @@
         <section class="px-panel"><h3>${tr("ui.executionLine")}</h3>${lineBox}</section>
         <section class="px-panel"><h3>${tr("ui.outputCout")}</h3>${outBox}</section>
         <section class="px-panel"><h3>${tr("ui.variableState")} <small>${tr("ui.beforeAfterThisLine")}</small></h3><div class="table-scroll"><table class="vars"><tr><th>${tr("ui.name")}</th><th>${tr("ui.type")}</th><th>${tr("ui.before")}</th><th>${tr("ui.after")}</th></tr>${varRows}</table></div></section>
+        ${memoryDetails}
       </div>`;
     const ref = $('#reflection');
     if (ref) ref.value = rec(m).reflection;
@@ -1184,7 +1237,7 @@
         ${f.fix ? `<button class="btn primary" data-action="fix">${icon('arrow')}${tr("ui.goToFix")}</button>` : ''}
         ${f.action && f.action.variant ? `<button class="btn primary" data-variant="${f.action.variant}">${icon('arrow')}${esc(f.action.label)}</button>` : ''}
         ${f.action && f.action.apply ? `<button class="btn" data-action="apply-check">${icon('star')}${esc(f.action.label)}</button>` : ''}
-        ${f.tone === 'success' && nm && rec(m).status === 'done' ? `<button class="btn primary" data-mission="${nm.id}">${icon('arrow')}${tr("ui.nextMission")}${nm.id} ${esc(nm.title)}</button>` : ''}
+        ${f.tone === 'success' && nm && unlocked(chapterNo(nm)) && rec(m).status === 'done' ? `<button class="btn primary" data-mission="${nm.id}">${icon('arrow')}${tr("ui.nextMission")}${nm.id} ${esc(nm.title)}</button>` : ''}
       </div>
       ${f.reflect ? `<label class="reflect">${tr("ui.inOneSentenceExplainWhyYou")}<input id="reflection" class="px-input" maxlength="200" placeholder="${tr("ui.exampleIChangedThisLineBecause")}"></label>` : ''}
     </div>`;
@@ -1223,7 +1276,7 @@
         <button class="btn" data-action="reset-run" ${run ? '' : 'disabled'} aria-keyshortcuts="r" title="${tr("ui.resetR")}">${icon('reset')}<span>${tr("ui.reset")}</span></button>
       </div>
       <div class="ctrl-status" aria-live="polite">${runStatus(m, w)}</div>
-      <span class="sim-tag">${tr("ui.educationalSimulatorChapter1SyntaxOnly")}</span>`;
+      <span class="sim-tag">${tr("chapter.simulator")}</span>`;
   }
 
   function orderStatus(m, w, placedN) {
@@ -1244,9 +1297,11 @@
     const total = totalSteps(run);
     let what = '';
     if (st.error) what = `${icon('cross', 'r')}${tr("ui.stopped")}`;
-    else if (st.changed.length) what = st.changed.map((n) => { const a = st.after.find((x) => x.name === n); return `<code>${esc(n)}</code>=${esc(a.value === undefined ? '?' : a.shown)}`; }).join(' ');
+    else if (st.events && st.events.length) what = st.events.map(eventText).filter(Boolean).map(esc).join(' · ');
+    else if (st.changed.length) what = st.changed.map((n) => { const a = st.after.find((x) => x.name === n); const d = st.delta && st.delta[n]; return `<code>${esc(n)}</code>=${esc(d ? d.to : a ? a.shown : '?')}`; }).join(' ');
     else if (st.kind === 'cout') what = (tr("ui.outputOnly"));
-    else if (st.kind === 'return' || st.kind === 'end') what = (tr("ui.ended"));
+    else if ((st.kind === 'return' || st.kind === 'end') && !st.depth) what = (tr("ui.ended"));
+    else if (st.kind === 'return' || st.kind === 'exit') what = tr('event.return');
     let verdict = '';
     if (run.kind === 'task' && run.graded) verdict = run.pass ? ` ${icon('check', 'G')}<b>${tr("ui.success")}</b>` : ` ${icon('cross', 'o')}<b>${tr("ui.doesNotMeetGoal")}</b>`;
     return `<span class="st-step">${tr('format.line', { line: st.line })} · ${run.stepIndex + 1}/${total}</span> <span class="st-what">${what}</span>${verdict}${isPlaying() ? (" <span class=\"st-play\">" + tr("ui.playing") + "</span>") : ''}`;
@@ -1301,11 +1356,13 @@
     dlg.querySelector('.dlg-body').innerHTML = `<h2>${icon('map')} ${tr("ui.islandMapMIT6096Lecture")}</h2>
       <p class="muted small">${tr("ui.eachLectureCorrespondsToOneIsland")}</p>
       <ol class="chapters">${CHAPTERS.map((c) => {
-        const done = c.playable && MISSIONS.every((x) => rec(x).status === 'done');
-        return `<li class="${c.playable ? 'open' : 'locked'}"><span class="ch-no">${pixText(String(c.no), c.playable ? 'k' : 'g', 3)}</span>
+        const list = chapterMissions(c.no);
+        const available = c.playable && unlocked(c.no);
+        const done = c.playable && list.every(x => rec(x).status === 'done');
+        return `<li class="${available ? 'open' : 'locked'}"><span class="ch-no">${pixText(String(c.no), available ? 'k' : 'g', 3)}</span>
           <div><b>${esc(c.zone)}</b> <span class="muted">Lecture ${c.no} ${esc(c.lecture)} · ${esc(c.pages)}</span><br><small>${esc(c.action)}</small></div>
-          <span class="ch-state">${c.playable ? (done ? `${icon('check', 'e')}${tr("ui.restored")}` : `${icon('play')}${tr("ui.playable")}`) : `${icon('lock', 'g')}${tr("ui.planned")}`}</span></li>`;
-      }).join('')}</ol>`;
+          <span class="ch-state">${available ? `<button class="btn small" data-mission="${list[0].id}">${done ? tr('ui.restored') : tr('ui.playable')}</button>` : c.playable ? tr('chapter.locked') : tr('chapter.later')}</span></li>`;
+      }).join('')}</ol><p class="muted">${tr('chapter.optional')}</p>`;
     if (!dlg.open) dlg.showModal();
   }
 
@@ -1315,10 +1372,12 @@
       const r = rec(m);
       const errs = Object.entries(r.errors).map(([k, v]) => `${ERROR_TYPES[k]} ${v}`).join(', ') || '–';
       const status = { none: (tr("ui.notAttempted")), trying: (tr("ui.inProgress")), done: (tr("ui.complete2")) }[r.status];
-      return `<tr><td>${m.id} ${esc(m.title)}</td><td>${status}</td><td>${r.applied ? (tr("ui.confirmed")) : '–'}</td><td>${r.attempts}</td><td>${r.hintLevel ? tr('format.hintLevel', { number: r.hintLevel, name: HINT_STEPS[r.hintLevel - 1] }) : (tr("ui.notViewed"))}</td><td>${esc(errs)}</td><td>${esc(r.reflection || '–')}</td></tr>`;
+      const heading = m === chapterMissions(chapterNo(m))[0] ? `<tr><th colspan="7">${esc(tr('chapter.number', { number: chapterNo(m) }))} · ${esc(CHAPTERS[chapterNo(m)-1].zone)}</th></tr>` : '';
+      return `${heading}<tr><td>${m.id} ${esc(m.title)}</td><td>${status}</td><td>${r.applied ? (tr("ui.confirmed")) : '–'}</td><td>${r.attempts}</td><td>${r.hintLevel ? tr('format.hintLevel', { number: r.hintLevel, name: HINT_STEPS[r.hintLevel - 1] }) : (tr("ui.notViewed"))}</td><td>${esc(errs)}</td><td>${esc(r.reflection || '–')}</td></tr>`;
     }).join('');
     dlg.querySelector('.dlg-body').innerHTML = `<h2>${icon('record')} ${tr("ui.learningRecord")}</h2>
       <p class="muted small">${tr("ui.thisRecordIsStoredOnlyIn")}</p>
+      <label class="btn"><input id="unlockAll" type="checkbox" ${settings.unlockAll ? 'checked' : ''}> ${tr('chapter.unlockAll')}</label>
       <div class="table-scroll"><table class="record"><tr><th>${tr("ui.mission")}</th><th>${tr("ui.progress")}</th><th>${tr("ui.appliedToOtherInputs")}</th><th>${tr("ui.runsChecks")}</th><th>${tr("ui.lastHint")}</th><th>${tr("ui.errorTypes")}</th><th>${tr("ui.finalExplanation")}</th></tr>${rows}</table></div>
       <div class="bench-actions">
         <button class="btn primary" data-action="export">${tr("ui.exportProgressJson")}</button>
@@ -1335,6 +1394,7 @@
   function summaryText() {
     const lines = [(tr("ui.cCodeIslandRobotRecoveryTeam")), `${tr("ui.recordedAt")}${progress.updatedAt || (tr("ui.noRecord"))}`, ''];
     for (const m of MISSIONS) {
+      if (m === chapterMissions(chapterNo(m))[0]) lines.push(`${tr('chapter.number', { number: chapterNo(m) })} · ${CHAPTERS[chapterNo(m)-1].zone}`);
       const r = rec(m);
       lines.push(`[${m.id} ${m.title}]`);
       lines.push(`${tr("ui.progress2")}${{ none: (tr("ui.notAttempted")), trying: (tr("ui.inProgress")), done: (tr("ui.missionComplete2")) }[r.status]}${tr("ui.appliedToOtherInputs2")}${r.applied ? (tr("ui.confirmed")) : (tr("ui.notConfirmed"))}`);
@@ -1352,6 +1412,8 @@
   // ------------------------------------------------------------ navigation helpers
 
   function goMission(id) {
+    const target = MISSIONS.find(m => m.id === id);
+    if (!target || !unlocked(chapterNo(target))) return;
     stopPlay();
     ui.missionId = id;
     ui.drawerMission = null;
@@ -1442,7 +1504,7 @@
     if (d.quiz) { const [qi, oi] = d.quiz.split(':').map(Number); answerQuiz(qi, oi); return; }
     if (d.blank) { w.activeBlank = d.blank; renderWorkbench(); const c = document.querySelector('[data-card]'); if (c) c.focus({ preventScroll: true }); return; }
     if (d.card !== undefined) { chooseCard(Number(d.card)); return; }
-    if (d.variant) { invalidateRun(w); w.variant = d.variant; w.activeBlank = null; if (narrow()) ui.pane = 'code'; render(); return; }
+    if (d.variant) { invalidateRun(w); w.variant = d.variant; w.testIndex = 0; w.activeBlank = null; if (narrow()) ui.pane = 'code'; render(); return; }
     if (d.test !== undefined) { invalidateRun(w); w.testIndex = Number(d.test); render(); return; }
     if (d.input !== undefined) { invalidateRun(w); w.input = d.input; saveWork(); render(); return; }
     if (d.predictOpt !== undefined) { w.predict.answers[Number(d.predictOpt)] = d.value; renderWorkbench(); return; }
@@ -1538,6 +1600,8 @@
 
   document.addEventListener('change', (ev) => {
     const t = ev.target;
+    if (t.id === 'chapterSelect') { const list = chapterMissions(Number(t.value)); if (list.length) goMission(list[0].id); return; }
+    if (t.id === 'unlockAll') { settings.unlockAll = t.checked; writeStore(SETTINGS_KEY, settings); renderTopbar(); return; }
     if (t.id === 'importFile' && t.files[0]) {
       const reader = new FileReader();
       reader.onload = () => {

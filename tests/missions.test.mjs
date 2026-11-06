@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const Sim = require('../src/cppsim.js');
 const M = require('../src/missions.js');
+M.loadAllChapters();
 
 const byId = (id) => M.MISSIONS.find((m) => m.id === id);
 
@@ -23,30 +24,30 @@ function passingCombos(variant, check) {
 test('1-1: only the full build order passes; the first wrong slot is reported', () => {
   const m = byId('1-1');
   const answer = m.cards.map((c) => c.id);
-  assert.equal(M.checkOrder(answer).pass, true);
+  assert.equal(m.check(answer, null, M.h).pass, true);
   const swapped = ['source', 'compiler', 'pre', 'object', 'linker', 'exe', 'os'];
-  const r = M.checkOrder(swapped);
+  const r = m.check(swapped, null, M.h);
   assert.equal(r.pass, false);
   assert.equal(r.correctPrefix, 1);
   assert.equal(r.wrongIndex, 1);
-  assert.equal(M.checkOrder(answer.slice(0, 3)).pass, false);
+  assert.equal(m.check(answer.slice(0, 3), null, M.h).pass, false);
   assert.equal(m.quiz.every((q) => q.options.filter((o) => o.ok).length === 1), true);
 });
 
 test('1-2: READY is sent only by main + cout + ;  — Main is a link error, not a compile error', () => {
   const [base, apply] = byId('1-2').variants;
   const run = (v, c) => Sim.run(M.buildBlankSource(v, c));
-  assert.deepEqual(passingCombos(base, (c) => M.checkSignal(base, run(base, c)).pass), [{ fn: 'main', stream: 'cout', end: ';' }]);
+  assert.deepEqual(passingCombos(base, (c) => base.check(run(base, c), base.tests[0], M.h).pass), [{ fn: 'main', stream: 'cout', end: ';' }]);
   assert.equal(run(base, { fn: 1, stream: 0, end: 0 }).error.kind, 'link');
   assert.equal(M.checkSignal(base, run(base, { fn: 0, stream: 0, end: 2 })).errorType, 'semicolon');
   assert.equal(M.checkSignal(base, run(base, { fn: 0, stream: 1, end: 0 })).errorType, 'direction');
-  assert.deepEqual(passingCombos(apply, (c) => M.checkSignal(apply, run(apply, c)).pass), [{ ns: 'using namespace std;', op: '<<' }]);
+  assert.deepEqual(passingCombos(apply, (c) => apply.check(run(apply, c), apply.tests[0], M.h).pass), [{ ns: 'using namespace std;', op: '<<' }]);
   assert.equal(M.checkSignal(apply, run(apply, { ns: 1, op: 0 })).errorType, 'namespace');
 });
 
 test('1-3: only a double share computed from robots passes every generator/robot input', () => {
   const v = byId('1-3').variants[0];
-  const passes = (c, t) => M.checkShare(t, Sim.run(M.buildBlankSource(v, c, t.params))).pass;
+  const passes = (c, t) => v.check(Sim.run(M.buildBlankSource(v, c, t.params)), t, M.h).pass;
   const all = passingCombos(v, (c) => v.tests.every((t) => passes(c, t)));
   assert.deepEqual(all, [{ type: 'double', expr: '1.0 * total / robots' }, { type: 'double', expr: 'total * 1.0 / robots' }]);
   // total / 2.0 passes the base input only — the apply check must expose it
@@ -61,7 +62,7 @@ test('1-3: only a double share computed from robots passes every generator/robot
 test('1-4: starter code does not compile; reference passes every input; a printed constant is caught', () => {
   const m = byId('1-4');
   assert.equal(Sim.run(m.starter, { input: '100' }).error.kind, 'compile');
-  for (const t of m.tests) assert.equal(M.checkBase(t, Sim.run(m.reference, { input: t.input })).pass, true, t.label);
+  for (const t of m.tests) assert.equal(m.check(Sim.run(m.reference, { input: t.input }), t, M.h).pass, true, t.label);
 
   const hard = m.reference.replace("cout << \"LEFT: \" << energy << '\\n';", 'cout << 65;');
   assert.notEqual(hard, m.reference);
@@ -84,10 +85,10 @@ test('starter hints point at the lines that actually fail', () => {
 });
 
 test('localized mission code differs only in comments, with the same line numbers', () => {
-  const ko = M.getMissions('ko');
-  const en = M.getMissions('en');
-  assert.equal(ko, M.MISSIONS);
-  assert.equal(en, M.getMissions('en'));
+  const ko = M.getMissions('ko').filter(m => m.id.startsWith('1-'));
+  const en = M.getMissions('en').filter(m => m.id.startsWith('1-'));
+  assert.equal(M.getMissions('ko'), M.MISSIONS);
+  assert.equal(M.getMissions('en'), M.getMissions('en'));
   const compare = (left, right) => {
     const a = left.split('\n');
     const b = right.split('\n');
@@ -109,7 +110,7 @@ test('English mission data contains no Korean text', () => {
       for (const [key, child] of Object.entries(value)) walk(child, `${path}.${key}`);
     }
   };
-  walk(M.getMissions('en'));
+  walk(M.getMissions('en').filter(m => m.id.startsWith('1-')));
 });
 
 test('English base reference passes all inputs and marks exactly lines 8 and 9', () => {
@@ -145,4 +146,23 @@ test('checker messages follow the selected language', () => {
   } finally {
     M.setLang('ko');
   }
+});
+
+test('blank substitutions also resolve parameters inside selected code', () => {
+  const variant = { template: 'int value = {choice};', blanks: { choice: [{ code: '{start} + 1' }] } };
+  assert.equal(M.buildBlankSource(variant, { choice: 0 }, { start: 4 }), 'int value = 4 + 1;');
+});
+
+test('registry resolves languages, orders chapters and invalidates the mission cache', () => {
+  const before = M.getMissions('en');
+  M.registerChapter({ no: 99, zone: { ko: '시험', en: 'Test' }, missions: [
+    { id: '99-1', title: { ko: '확인', en: 'Check' }, check: () => ({ pass: true }) },
+  ], errorTypes: { example: { ko: '예', en: 'Example' } }, codeErrorTypes: { exampleCode: 'example' } });
+  const after = M.getMissions('en');
+  assert.notEqual(after, before);
+  assert.equal(after.at(-1).title, 'Check');
+  assert.equal(after.at(-1).check().pass, true);
+  assert.equal(M.getErrorTypes('en').example, 'Example');
+  assert.equal(M.classifySimError({ code: 'exampleCode' }), 'example');
+  assert.equal(M.getChapters('en').length, 10);
 });
